@@ -56,7 +56,13 @@ export function createGame(quality: Quality, camera: THREE.PerspectiveCamera) {
     },
     3: { name: 'IRON THUNDER', spawn: () => (artillery.count === 0 ? artillery.deploy(4) : (artillery.rate = 3)) },
     4: { name: 'THE SKYFLEET', spawn: () => airships.deploy(2) },
-    5: { name: 'THE COLOSSUS', spawn: () => titans.spawn(around(90, 0.6).x, around(90, 0.6).z) },
+    5: {
+      name: 'THE COLOSSUS',
+      spawn: () => {
+        const p = around(90, 0.6)
+        titans.spawn(p.x, p.z)
+      },
+    },
     6: { name: 'SOL LANCE', spawn: () => lance.strike() },
     7: {
       name: 'NUCLEAR LAUNCH',

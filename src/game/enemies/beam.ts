@@ -118,14 +118,17 @@ export class OrbitalBeam {
     if (this.phase === 'target') out.push({ pos: this.point.clone().setY(2), eta: 2.8 - this.t, tier: 'cosmic', label: 'BEAM' })
   }
 
-  private place(mesh: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3, r: number) {
+  private place(mesh: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3, r: number, root = 1, tip = 1) {
     _w.subVectors(b, a)
     const len = _w.length()
     mesh.position.copy(a)
     _q.setFromUnitVectors(UP, _w.normalize())
     mesh.quaternion.copy(_q)
     mesh.scale.set(r, len, r)
-    ;(mesh.material as THREE.ShaderMaterial).uniforms.uLen.value = len
+    const u = (mesh.material as THREE.ShaderMaterial).uniforms
+    u.uLen.value = len
+    u.uRoot.value = root
+    u.uTip.value = tip
     mesh.visible = true
   }
 
@@ -169,8 +172,8 @@ export class OrbitalBeam {
       // the beam runs back up its own path
       const k = Math.min(1, this.t / 0.5)
       const head = _v.lerpVectors(pl.chestPos(_w), src, k).clone()
-      this.place(this.beam, pl.chestPos(_w).clone(), head, R * 0.7)
-      this.place(this.glow, pl.chestPos(_w).clone(), head, R * 1.6)
+      this.place(this.beam, pl.chestPos(_w).clone(), head, R * 0.7, 0.25, 1)
+      this.place(this.glow, pl.chestPos(_w).clone(), head, R * 1.6, 0.2, 1)
       if (k >= 1 && this.t - dt < 0.5) this.o.onSourceHit(99999, 1, true)
       if (this.t > 1.2) this.stop()
       return
@@ -221,8 +224,10 @@ export class OrbitalBeam {
       this.catchSound = null
     }
 
-    this.place(this.beam, src, end, R * 0.55)
-    this.place(this.glow, src, end, R * 1.4)
+    // a caught beam funnels down into the blade
+    const tip = this.catching ? 0.25 : 1
+    this.place(this.beam, src, end, R * 0.55, 1, tip)
+    this.place(this.glow, src, end, R * 1.4, 1, tip * 0.8)
     this.sound?.set(1, end)
 
     // where it touches the world: melt, burn, vaporize
@@ -241,15 +246,16 @@ export class OrbitalBeam {
     } else {
       // the caught beam pours out of the blade along the hero's aim
       this.caughtFor += dt
-      const dir = g.cam.aimDir.clone()
+      // toward whatever the crosshair is on
+      const dir = _v.subVectors(g.cam.aimPoint, blade).normalize().clone()
       const far = blade.clone().addScaledVector(dir, 700)
       // stop where it meets the ground
       if (dir.y < -0.01) {
         const tHit = -blade.y / dir.y
         if (tHit < 700) far.copy(blade).addScaledVector(dir, tHit)
       }
-      this.place(this.out, blade, far, R * 0.5)
-      this.place(this.outGlow, blade, far, R * 1.2)
+      this.place(this.out, blade, far, R * 0.5, 0.3, 1)
+      this.place(this.outGlow, blade, far, R * 1.2, 0.25, 1)
       g.fx.spark(blade, null, 6, 12, [1, 0.85, 0.5])
       g.fx.light(blade, '#ffd890', 600, 30, 30)
       g.cam.addTrauma(dt * 1.2)
@@ -261,7 +267,6 @@ export class OrbitalBeam {
           g.scorch.crater(far.x, far.z, R, 1)
           g.fx.explosion(far.clone().setY(1), 3, { sound: Math.random() < 0.3, debris: false })
         }
-        pl.hurt(2, this.point)
       }
       // swept across its own source?
       this.o.source(_v)

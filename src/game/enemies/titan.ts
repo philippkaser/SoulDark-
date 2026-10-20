@@ -329,7 +329,7 @@ export class Titans implements System {
     const fwdZ = Math.cos(t.yaw)
     // the blade lands along this line
     _a.set(t.x + fwdX * 6, 0.2, t.z + fwdZ * 6)
-    const reach = clamp(Math.hypot(t.target.x - t.x, t.target.z - t.z) + 6, 18, 34)
+    const reach = clamp(Math.hypot(t.target.x - t.x, t.target.z - t.z) + 6, 18, 44)
     _b.set(t.x + fwdX * reach, 0.2, t.z + fwdZ * reach)
     if (t.t > 0.3 && t.t < 2.0) {
       t.marker.visible = true

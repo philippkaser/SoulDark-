@@ -122,6 +122,8 @@ export class CameraRig {
       this.shotT += rdt
       // a shot may end itself from inside its own frame
       const sf = shot.frame(this.shotT, _sp, _sl)
+      // never film from under the ground
+      _sp.y = Math.max(_sp.y, 1.2)
       const kin = shot.blendIn > 0 ? clamp(this.shotT / shot.blendIn, 0, 1) : 1
       const k = kin * kin * (3 - 2 * kin)
       _gp.lerp(_sp, k)

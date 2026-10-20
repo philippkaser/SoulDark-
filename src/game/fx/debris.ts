@@ -63,7 +63,7 @@ export class Debris {
     this.mesh.frustumCulled = false
     this.mesh.count = MAX
     for (let i = 0; i < MAX; i++) {
-      this.mesh.setColorAt(i, _c.setRGB(0.3, 0.28, 0.26))
+      this.mesh.setColorAt(i, _c.setRGB(0.3, 0.21, 0.16))
       _m.makeScale(0, 0, 0)
       this.mesh.setMatrixAt(i, _m)
     }
@@ -148,7 +148,7 @@ export class Debris {
         colorDirty = true
       } else if (this.shade[i] >= 0) {
         const g = this.shade[i]
-        this.mesh.setColorAt(i, _c.setRGB(g, g * 0.95, g * 0.9))
+        this.mesh.setColorAt(i, _c.setRGB(g, g * 0.7, g * 0.52))
         this.shade[i] = -1
         colorDirty = true
       }

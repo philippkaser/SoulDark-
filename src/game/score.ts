@@ -67,6 +67,9 @@ export interface FeedLine {
   pts: number
   at: number
   big: boolean
+  /** Repeats of the same line close together fold into one: "Spire felled ×6". */
+  base: string
+  n: number
 }
 
 export interface Tally {
@@ -148,7 +151,16 @@ export class Score {
   }
 
   log(text: string, pts: number, big = false) {
-    this.feed.push({ id: feedId++, text, pts, at: this.clock, big })
+    const last = this.feed[this.feed.length - 1]
+    if (last && last.base === text && this.clock - last.at < 2) {
+      last.n++
+      last.pts += pts
+      last.text = `${text} ×${last.n}`
+      last.at = this.clock
+      last.id = feedId++
+      return
+    }
+    this.feed.push({ id: feedId++, text, pts, at: this.clock, big, base: text, n: 1 })
     if (this.feed.length > 7) this.feed.shift()
   }
 

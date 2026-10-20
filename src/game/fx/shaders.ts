@@ -300,26 +300,40 @@ export function beamGeometry() {
 
 export function beamMaterial(color: THREE.ColorRepresentation) {
   return new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color(color) }, uAlpha: { value: 0 }, uTime: { value: 0 }, uLen: { value: 100 } },
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uAlpha: { value: 0 },
+      uTime: { value: 0 },
+      uLen: { value: 100 },
+      // radius scale at the start and end of the beam: a caught beam narrows into the blade
+      uRoot: { value: 1 },
+      uTip: { value: 1 },
+    },
     vertexShader: /* glsl */ `
-      varying vec2 vUv; varying vec3 vN; varying vec3 vView;
+      uniform float uRoot; uniform float uTip;
+      varying vec2 vUv; varying vec3 vN; varying vec3 vView; varying vec3 vPos;
       void main() {
         vUv = uv;
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vec3 p = position;
+        p.xz *= mix(uRoot, uTip, position.y);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vPos = mv.xyz;
         vView = normalize(-mv.xyz); vN = normalize(normalMatrix * normal);
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColor; uniform float uAlpha; uniform float uTime; uniform float uLen;
-      varying vec2 vUv; varying vec3 vN; varying vec3 vView;
+      varying vec2 vUv; varying vec3 vN; varying vec3 vView; varying vec3 vPos;
       ${NOISE3}
       void main() {
         float f = abs(dot(vN, vView));
         float core = pow(f, 3.0);
         float n = n3(vec3(vUv.x * 12.0, vUv.y * uLen * 0.08 - uTime * 18.0, uTime));
         float rings = 0.75 + 0.25 * sin(vUv.y * uLen * 0.6 - uTime * 60.0);
+        // don't swallow the camera when it ends up inside the beam
+        float near = smoothstep(3.0, 18.0, length(vPos));
         vec3 c = uColor * (0.4 + f * 1.2) * (0.6 + n * 0.8) * rings + vec3(5.0, 4.6, 4.2) * core;
-        gl_FragColor = vec4(c * uAlpha, uAlpha * (0.25 + f));
+        gl_FragColor = vec4(c * uAlpha * near, uAlpha * (0.25 + f) * near);
       }`,
     transparent: true,
     depthWrite: false,

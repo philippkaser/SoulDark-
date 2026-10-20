@@ -159,6 +159,7 @@ export class Eclipse implements System {
     if (this.sandboxMoon) {
       this.sandboxMoon = false
       this.stage = 'dormant'
+      this.hp = MAX_HP
       return
     }
     this.stage = 'frenzy'
@@ -176,7 +177,7 @@ export class Eclipse implements System {
   }
 
   bosses(out: BossBar[]) {
-    if (this.alive && this.stage !== 'finale') out.push({ id: 'eclipse', name: 'THE ECLIPSE', hp: Math.max(0, this.hp), max: MAX_HP })
+    if (this.alive && !this.sandboxMoon && this.stage !== 'finale') out.push({ id: 'eclipse', name: 'THE ECLIPSE', hp: Math.max(0, this.hp), max: MAX_HP })
   }
 
   threats(out: Threat[]) {
@@ -203,7 +204,7 @@ export class Eclipse implements System {
   }
 
   hurt(dmg: number) {
-    if (!this.alive || this.stage === 'finale' || this.stage === 'falter') return
+    if (!this.alive || this.sandboxMoon || this.stage === 'finale' || this.stage === 'falter') return
     this.hp -= dmg
     this.hitFlash = 1
     this.game.sky.flash(SUN_DIR, Math.min(1.2, 0.3 + dmg / 4000), '#ff6040')
@@ -214,6 +215,14 @@ export class Eclipse implements System {
   private falter() {
     this.stage = 'falter'
     this.t = 0
+    if (this.moonActive) {
+      // the eye loses its grip: the moon crumbles mid-fall
+      this.moonActive = false
+      this.moonDone = true
+      this.moon.visible = false
+      this.game.fx.explosion(this.moon.position.clone(), 90, { scorch: false, debris: false })
+      this.game.sky.flash(SUN_DIR, 1.5, '#fff0d0')
+    }
     this.hp = Math.max(1, this.hp)
     this.finaleReady = true
     this.beam.stop()
@@ -415,7 +424,7 @@ export class Eclipse implements System {
         // light washes back over the world
         g.sun.intensity = 2.2 + smoothstep(2, 8, this.t) * 2.5
         g.sun.color.lerpColors(new THREE.Color('#ffb27a'), new THREE.Color('#fff2dc'), smoothstep(2, 8, this.t))
-        g.fill.color.lerpColors(new THREE.Color('#6a4f78'), new THREE.Color('#9ab8e8'), smoothstep(2, 8, this.t))
+        g.fill.color.lerpColors(new THREE.Color('#5a3a66'), new THREE.Color('#b8b0d0'), smoothstep(2, 8, this.t))
         break
       }
     }

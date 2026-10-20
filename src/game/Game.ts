@@ -278,6 +278,10 @@ export class Game {
     this.slicer.clear()
     this.slashes.clear()
     this.props.reset()
+    // the dawn relights the world; put the eclipse light back
+    this.sun.color.set('#ffb27a')
+    this.sun.intensity = 2.2
+    this.fill.color.set('#5a3a66')
     for (const s of this.systems) s.reset()
     this.score.reset()
     this.player.reset()
@@ -332,7 +336,12 @@ export class Game {
     this.fx.update(wdt, rdt, this.camera, this.viewportH)
     this.sky.update(rdt, this.camera, true)
     this.post.update(rdt)
-    if (this.scene?.fog) (this.scene.fog as THREE.FogExp2).color.copy(this.sky.fogColor)
+    if (this.scene?.fog) {
+      const fog = this.scene.fog as THREE.FogExp2
+      fog.color.copy(this.sky.fogColor)
+      // the air clears at dawn
+      fog.density = 0.0016 - 0.0008 * this.sky.u.uDawn.value
+    }
 
     // keep the shadow camera on the hero
     const px = Math.round(this.player.pos.x)

@@ -153,7 +153,7 @@ void main() {
 }
 `
 
-const DAWN_FOG = new THREE.Color('#9a7e74')
+const DAWN_FOG = new THREE.Color('#c39478')
 
 export class Sky {
   readonly mesh: THREE.Mesh

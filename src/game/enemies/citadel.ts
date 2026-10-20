@@ -269,6 +269,9 @@ export class Citadel implements System {
   }
 
   reflectTargets(out: ReflectTarget[]) {
+    // the silos only become fair game in their own trial; a returned warhead
+    // still finds its silo because it falls back to its sender
+    if (!this.engaged) return
     for (const s of this.silos) if (s.alive) out.push(s)
   }
 

@@ -17,7 +17,7 @@ export class Director implements System {
   private titleT = 0
   sandbox: SpawnTable = {}
   /** Campaign script (installed by the wave module). */
-  campaign: { start(): void; update(dt: number, rdt: number): void; reset(): void; wave: number } | null = null
+  campaign: import('./waves').Campaign | null = null
 
   constructor(game: Game) {
     this.game = game
@@ -27,7 +27,7 @@ export class Director implements System {
     this.titleT = 0
   }
 
-  start(mode: GameMode) {
+  start(mode: GameMode, wave = 0) {
     const g = this.game
     g.resetWorld()
     g.mode = mode
@@ -39,11 +39,14 @@ export class Director implements System {
     }
     g.cam.stopShot()
     g.cam.snap(g.player.pos, Math.PI)
-    if (mode === 'campaign') this.campaign?.start()
+    if (mode === 'campaign') {
+      if (wave > 0) this.campaign?.startAt(wave)
+      else this.campaign?.start()
+    }
     else {
       g.player.godMode = false
       useUI.getState().showBanner({ kind: 'wave', title: 'SANDBOX', sub: 'Number keys summon the apocalypse. 0 grants immortality.' })
-      useUI.getState().setObjective('1 Legion · 2 Arrows · 3 Artillery · 4 Airships · 5 Colossus · 6 Sol Lance · 7 NUKE · 8 Meteors · 9 The Moon')
+      useUI.getState().setObjective('Sandbox · 1–9 summon · 0 immortality')
       audio.music('battle', 1)
     }
   }

@@ -168,6 +168,11 @@ export class Player {
         const p = this.chestPos(_v)
         this.game.fx.spark(p, _w.subVectors(from, p).normalize(), 10, 10)
       }
+      if (!quiet) {
+        // a perfect parry re-arms the window, so a whole salvo goes home in one chain
+        this.parryT = Math.min(this.parryT, -0.3)
+        this.t = Math.min(this.t, 0.04)
+      }
       return 'perfect'
     }
     if (this.guarding) {
@@ -222,10 +227,10 @@ export class Player {
     const g = this.game
     if (!this.godMode) this.hp = Math.max(0, this.hp - dmg)
     this.lastHurt = 0
-    g.post.hurt = Math.min(1, g.post.hurt + 0.25 + dmg / 300)
+    g.post.hurt = Math.min(1, g.post.hurt + Math.min(0.7, 0.1 + dmg / 250) * (this.godMode ? 0.4 : 1))
     g.cam.addTrauma(0.15 + Math.min(0.6, dmg / 400))
     audio.hurt(dmg >= 80)
-    g.score.hurt(dmg)
+    if (!this.godMode) g.score.hurt(dmg)
     if (knock > 0) {
       _v.subVectors(this.pos, from).setY(0).normalize()
       this.vel.addScaledVector(_v, knock)

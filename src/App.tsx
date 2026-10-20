@@ -14,7 +14,7 @@ export function App() {
   const [game, setGame] = useState<Game | null>(null)
 
   const start = useCallback(
-    (mode: Mode) => {
+    (mode: Mode, wave = 0) => {
       if (!game) return
       const ui = useUI.getState()
       audio.init()
@@ -25,7 +25,7 @@ export function App() {
       ui.setPaused(false)
       ui.clearBanner()
       ui.setScreen('game')
-      game.director!.start(mode)
+      game.director!.start(mode, wave)
       input.requestLock()
     },
     [game],
@@ -56,7 +56,7 @@ export function App() {
     <>
       <GameCanvas quality={quality} game={game} onGame={setGame} />
       {screen === 'title' && <TitleScreen ready={!!game} onStart={start} />}
-      {screen !== 'title' && game && <HUD game={game} />}
+      {screen === 'game' && game && <HUD game={game} />}
       {game && <Overlays game={game} onStart={start} onQuit={quit} />}
     </>
   )
