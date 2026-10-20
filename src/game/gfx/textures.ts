@@ -384,15 +384,24 @@ export function blockStoneTexture(): THREE.Texture {
     const n = fbmField(size, 8, 5, 51)
     const fine = fbmField(size, 64, 2, 52)
     const r = mulberry32(53)
-    const rows = 8
+    const rows = 7
     const data = new Uint8Array(size * size * 4)
+    // courses of varying height (tileable: they sum to 1)
+    const heights = Array.from({ length: rows }, () => 0.65 + r() * 0.7)
+    const total = heights.reduce((a, b) => a + b, 0)
+    const starts: number[] = []
+    let acc = 0
+    for (const h of heights) {
+      starts.push(acc / total)
+      acc += h
+    }
     // per row random block widths (tileable: each row sums to 1)
     const rowBlocks: number[][] = []
     for (let y = 0; y < rows; y++) {
       const cuts: number[] = [0]
       let x = 0
       while (x < 1) {
-        x += 0.18 + r() * 0.22
+        x += 0.16 + r() * 0.26
         cuts.push(Math.min(1, x))
       }
       if (1 - cuts[cuts.length - 2] < 0.1) cuts.splice(cuts.length - 2, 1)
@@ -403,8 +412,10 @@ export function blockStoneTexture(): THREE.Texture {
     const tint = Array.from({ length: 256 }, () => r())
     for (let py = 0; py < size; py++) {
       const v = py / size
-      const row = Math.floor(v * rows)
-      const fy = v * rows - row
+      let row = rows - 1
+      while (row > 0 && starts[row] > v) row--
+      const rh = heights[row] / total
+      const fy = (v - starts[row]) / rh
       const cuts = rowBlocks[row]
       for (let px = 0; px < size; px++) {
         const u = (px / size + offsets[row]) % 1
@@ -412,15 +423,15 @@ export function blockStoneTexture(): THREE.Texture {
         while (bi < cuts.length - 2 && cuts[bi + 1] <= u) bi++
         const x0 = cuts[bi]
         const x1 = cuts[bi + 1]
-        const ex = Math.min(u - x0, x1 - u) * 1.0
-        const ey = Math.min(fy, 1 - fy) / rows
+        const ex = Math.min(u - x0, x1 - u)
+        const ey = Math.min(fy, 1 - fy) * rh
         const i = py * size + px
-        const chip = (n[i] - 0.5) * 0.012
+        const chip = (n[i] - 0.5) * 0.014
         const edge = Math.min(ex, ey) + chip
         const mortar = edge < 0.004
-        const bevel = Math.min(1, Math.max(0, (edge - 0.004) / 0.01))
+        const bevel = Math.min(1, Math.max(0, (edge - 0.004) / 0.012))
         const id = tint[(row * 31 + bi * 7) & 255]
-        const h = mortar ? 0.1 : 0.55 + bevel * 0.35 + (n[i] - 0.5) * 0.25 + (fine[i] - 0.5) * 0.08
+        const h = mortar ? 0.1 : 0.55 + bevel * 0.35 + (n[i] - 0.5) * 0.3 + (fine[i] - 0.5) * 0.08
         let c = mortar ? 0.36 : 0.6 + (id - 0.5) * 0.18 + (n[i] - 0.5) * 0.38 + (fine[i] - 0.5) * 0.12
         c *= 0.85 + bevel * 0.15
         data[i * 4] = Math.max(0, Math.min(255, c * 255 * 1.0))

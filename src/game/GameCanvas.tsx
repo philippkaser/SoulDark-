@@ -26,6 +26,16 @@ function TitleCamera() {
   return null
 }
 
+/** Soft fill light riding with the camera so backlit characters stay readable. */
+function CameraFill() {
+  const light = useRef<THREE.PointLight>(null!)
+  useFrame(({ camera }) => {
+    light.current.position.copy(camera.position)
+    light.current.position.y += 0.6
+  })
+  return <pointLight ref={light} color="#b8c6e0" intensity={5} distance={14} decay={2} />
+}
+
 function SessionLayer({ session }: { session: GameSession }) {
   const { camera, size, gl } = useThree()
   useEffect(() => {
@@ -115,6 +125,7 @@ export function GameCanvas({ session, quality }: { session: GameSession | null; 
     >
       <World quality={quality} />
       <SunDisc ref={setSun} />
+      <CameraFill />
       {session ? <SessionLayer session={session} /> : <TitleCamera />}
       <PostFX quality={quality} sun={sun} />
     </Canvas>
