@@ -43,6 +43,7 @@ export class Campaign {
   private t = 0
   private reinforceT = 0
   private archersSpawned = 0
+  private archersBase = 0
   private nukeT = 0
   private neutralized = 0
   startedAt = 0
@@ -83,8 +84,11 @@ export class Campaign {
           this.reinforceT = 14
         },
         tick: (dt) => {
+          // keep enough soldiers on the field to finish the count, sooner when it runs dry
+          const need = 450 - horde.killed
+          if (horde.alive === 0) this.reinforceT = Math.min(this.reinforceT, 2)
           this.reinforceT -= dt
-          if (this.reinforceT <= 0 && horde.killed < 380 && horde.alive < 220) {
+          if (this.reinforceT <= 0 && need > 0 && horde.alive < Math.min(220, need + 40)) {
             this.reinforceT = 10
             this.legion(8, 12)
           }
@@ -97,8 +101,11 @@ export class Campaign {
         sub: 'They will darken the sky. Return it to them.',
         tip: 'RMB at the moment of impact: a PERFECT PARRY returns every arrow',
         setup: () => {
-          this.archersSpawned = 0
-          for (let i = 0; i < 2; i++) this.archersSpawned += Math.round(this.legion(10, 12, 0.45, 0.9) * 0.45)
+          // count the archers that actually took the field
+          this.archersBase = horde.archersKilled
+          const before = horde.archersAlive
+          for (let i = 0; i < 2; i++) this.legion(10, 12, 0.45, 0.9)
+          this.archersSpawned = horde.archersAlive - before
           this.legion(8, 10)
           horde.volleyIn = 4
           horde.volleyEvery = 6.5
@@ -110,8 +117,8 @@ export class Campaign {
             this.legion(7, 10)
           }
         },
-        objective: () => `Silence the archers · ${Math.min(horde.archersKilled, this.archersSpawned)}/${this.archersSpawned}`,
-        done: () => horde.archersKilled >= this.archersSpawned * 0.92,
+        objective: () => `Silence the archers · ${Math.min(horde.archersKilled - this.archersBase, this.archersSpawned)}/${this.archersSpawned}`,
+        done: () => horde.archersKilled - this.archersBase >= Math.floor(this.archersSpawned * 0.92),
       },
       {
         name: 'IRON THUNDER',
