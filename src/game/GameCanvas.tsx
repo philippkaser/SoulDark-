@@ -66,7 +66,6 @@ function Stage({ quality, onGame }: { quality: Quality; onGame: (g: Game | null)
     game.cam.shakeScale = s.shake
     if (ui.paused && playing) return
     game.update(delta, f, input.enabled)
-    game.director?.input(f)
   })
 
   return <primitive object={game.root} />

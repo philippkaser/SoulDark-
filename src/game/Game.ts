@@ -12,7 +12,7 @@ import { Slashes } from './player/slashes'
 import { PostState } from './post'
 import { Score } from './score'
 import { TimeCtl } from './time'
-import { newHitId, type Damageable, type Hit, type ReflectTarget } from './types'
+import { newHitId, type Damageable, type Hit, type ReflectTarget, type Threat } from './types'
 import { buildGround } from './world/ground'
 import { FOG_COLOR, SUN_DIR } from './world/layout'
 import { Props } from './world/props'
@@ -32,6 +32,7 @@ export interface System {
   /** Enemy positions (Judgment, aim assist). */
   points?(out: THREE.Vector3[]): void
   bosses?(out: BossBar[]): void
+  threats?(out: Threat[]): void
 }
 
 export interface Obstacle {
@@ -72,6 +73,9 @@ export class Game {
   private damageables: Damageable[] = []
   mode: GameMode = 'title'
   director: import('./director').Director | null = null
+  forces: import('./waves').Forces | null = null
+  /** Overrides Q (the Eclipse finale). Returns true when it handled the press. */
+  onUltimate: (() => boolean) | null = null
   /** Enemies hold fire (cinematics, wave intros). */
   ceasefire = false
   /** Seconds since the run started. */
@@ -113,7 +117,7 @@ export class Game {
     Object.assign(this.sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 300 })
     this.sun.shadow.bias = -0.0003
     this.sun.shadow.normalBias = 0.04
-    this.fill = new THREE.HemisphereLight('#6a4f78', '#2a1410', 1.25)
+    this.fill = new THREE.HemisphereLight('#5a3a66', '#1a0c0a', 0.85)
     const rimBack = new THREE.DirectionalLight('#7f8cff', 0.5)
     rimBack.position.set(40, 30, 80)
 
@@ -154,6 +158,13 @@ export class Game {
 
   obstacles(): Obstacle[] {
     return this.obstacleList
+  }
+
+  /** Inbound dangers, soonest first. */
+  threats(): Threat[] {
+    const out: Threat[] = []
+    for (const s of this.systems) s.threats?.(out)
+    return out.sort((a, b) => a.eta - b.eta)
   }
 
   reflectTargets(): ReflectTarget[] {
@@ -197,7 +208,7 @@ export class Game {
         const p1 = _w.lerpVectors(a, b, t1).clone()
         this.scorch.fissure(p0.x, p0.z, p1.x, p1.z, 0.8 + k * 1.6, 1)
         const mid = p0.clone().lerp(p1, 0.5).setY(0.3)
-        fx.debris.burst(mid, Math.round(2 + k * 5), 8 + k * 14, 0.2 + k * 0.35, 1, 1.4)
+        fx.debris.burst(mid, Math.round(2 + k * 4), 8 + k * 14, 0.12 + k * 0.18, 1, 1.4)
         fx.dust(mid, 2, 2 + k * 3, 2 + k * 3)
         fx.spark(mid, new THREE.Vector3(0, 1, 0), 10, 14 + k * 14, [1, 0.7, 0.3])
         const nf = Math.round(3 * this.q)
@@ -212,7 +223,7 @@ export class Game {
     this.cam.addTrauma(0.4 + k * 0.6)
     this.cam.kickFov(6 + k * 8)
     this.post.impactFrames(k > 0.7 ? [2, 1, 2, 0] : [2, 0])
-    this.post.kickZoom(0.1 + k * 0.2)
+    this.post.kickZoom(0.05 + k * 0.08)
     this.post.flashTo(0.06 + k * 0.12, '#fff4dc', 5)
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
@@ -305,6 +316,7 @@ export class Game {
     this.windGust.multiplyScalar(Math.exp(-rdt * 1.5))
     this.wind.set(1.6 + Math.sin(this.clock * 0.7) * 0.8, 0, -0.5 + Math.cos(this.clock * 0.4) * 0.6).add(this.windGust)
 
+    this.director?.input(frame)
     this.player.update(pdt, frame, playing && inputEnabled)
     this.slashes.update(pdt)
     for (const s of this.systems) s.update(wdt, rdt)
@@ -316,6 +328,7 @@ export class Game {
     // camera
     const big = this.player.state === 'charge' ? this.player.charge * 3 : 0
     this.cam.update(rdt, frame.lookX, frame.lookY, { pos: this.player.pos, framing: big + this.framing }, this.camera, playing && inputEnabled)
+    this.ambience(wdt)
     this.fx.update(wdt, rdt, this.camera, this.viewportH)
     this.sky.update(rdt, this.camera, true)
     this.post.update(rdt)
@@ -352,6 +365,24 @@ export class Game {
 
   /** Extra camera distance requested by big fights. */
   framing = 0
+
+  /** The end of the world drifts by: embers rising, ash falling. */
+  private ambience(dt: number) {
+    const c = this.camera.position
+    const dawn = this.sky.u.uDawn.value
+    const n = Math.floor(dt * 70 * this.q + Math.random())
+    for (let i = 0; i < n; i++) {
+      _v.set(c.x + (Math.random() - 0.5) * 70, c.y + (Math.random() - 0.4) * 22, c.z + (Math.random() - 0.5) * 70)
+      if (Math.random() < 0.45 * (1 - dawn)) {
+        _w.set(this.wind.x * 0.6 + (Math.random() - 0.5), 0.6 + Math.random() * 1.2, this.wind.z * 0.6 + (Math.random() - 0.5))
+        this.fx.glow.spawn(_v, _w, [1, 0.35 + Math.random() * 0.25, 0.08], 0.9, 0.035 + Math.random() * 0.04, 4 + Math.random() * 4, -0.05, 0.1)
+      } else {
+        _w.set(this.wind.x * 0.8, -0.5 - Math.random() * 0.4, this.wind.z * 0.8)
+        const gr = 0.18 + Math.random() * 0.12 + dawn * 0.5
+        this.fx.smoke.spawn(_v, _w, [gr, gr * 0.95, gr * 0.92], 0.7, 0.07 + Math.random() * 0.06, 6, 0, 0.05, { spin: 3, fadeIn: 0.2 })
+      }
+    }
+  }
 
   /** Blow everything around with a shockwave gust. */
   gust(from: THREE.Vector3, strength: number) {

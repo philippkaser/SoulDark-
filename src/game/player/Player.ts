@@ -33,6 +33,8 @@ export const TIER_N: Record<Tier, number> = { small: 0, medium: 1, large: 2, cos
 const RUN = 11
 const GRAVITY = 52
 const PERFECT = 0.2
+/** Bigger, slower, better-telegraphed threats allow a slightly longer window. */
+const PERFECT_BY_TIER = [0.2, 0.2, 0.25, 0.3]
 const MAX_HP = 1000
 const CHARGE_TIME = 1.1
 
@@ -158,7 +160,7 @@ export class Player {
   defend(tier: Tier, from: THREE.Vector3, quiet = false): ParryResult {
     if (!this.alive || this.state === 'cine') return 'none'
     const n = TIER_N[tier]
-    if (this.inPerfectWindow) {
+    if (this.state === 'parry' && this.parryT < PERFECT_BY_TIER[n]) {
       if (!quiet && n > this.parriedTier) {
         this.parriedTier = n
         this.parrySpectacle(n, from)
@@ -293,11 +295,14 @@ export class Player {
 
     // ---- universal cancels: the hero is never stuck
     const cancellable = s === 'free' || s === 'air' || s === 'guard' || s === 'land' || ((s === 'slash' || s === 'airslash') && this.fired) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12)
-    if (cancellable || s === 'charge') {
+    if (cancellable || s === 'charge' || s === 'catch') {
       if (want(f.parry) && this.parryLag <= 0) return this.startParry()
       if (want(f.dash) && this.dashCd <= 0) return this.startDash(mx, mz)
     }
-    if (cancellable && want(f.ult) && this.divinity >= 100) return this.startJudgment()
+    if (cancellable && want(f.ult)) {
+      if (g.onUltimate?.()) return
+      if (this.divinity >= 100) return this.startJudgment()
+    }
 
     switch (this.state) {
       case 'free':
@@ -355,7 +360,7 @@ export class Player {
       case 'parry': {
         this.locomote(dt, 0, 0, 0, 0, !this.grounded)
         if (this.t < 0.05 && this.parryT < 0.05) this.yaw = turnToward(this.yaw, this.aimYaw, 40 * dt)
-        if (this.t >= 0.3) {
+        if (this.t >= 0.34) {
           if (f.guard) this.enter('guard')
           else {
             // a whiffed parry costs a moment before the next

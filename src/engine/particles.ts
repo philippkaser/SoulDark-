@@ -55,12 +55,17 @@ varying vec4 vColor;
 varying vec2 vUv;
 varying float vHeat;
 varying float vSeed;
+varying float vGround;
 void main() {
-  vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
   float cr = cos(iParams.y), sr = sin(iParams.y);
   vec2 c = mat2(cr, -sr, sr, cr) * position.xy;
-  mv.xy += c * iParams.x;
-  gl_Position = projectionMatrix * mv;
+  // billboard in world space so we know where each fragment sits
+  vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  vec3 world = (modelMatrix * vec4(iPos, 1.0)).xyz + (right * c.x + up * c.y) * iParams.x;
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+  // soft contact with the ground plane instead of a hard cut
+  vGround = clamp(world.y / (iParams.x * 0.35 + 0.05), 0.0, 1.0);
   vColor = iColor;
   vUv = position.xy * 2.0;
   vHeat = iParams.z;
@@ -76,6 +81,7 @@ varying vec4 vColor;
 varying vec2 vUv;
 varying float vHeat;
 varying float vSeed;
+varying float vGround;
 float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
@@ -92,7 +98,7 @@ void main() {
   vec3 lit = vColor.rgb * mix(vec3(1.0), uAmbient + diff * (1.0 - uAmbient), uLit);
   lit *= 0.85 + n * 0.3;
   vec3 hot = uHot * vHeat * (0.6 + n * 0.8) * (1.2 - r * 0.6);
-  float a = vColor.a * shape;
+  float a = vColor.a * shape * vGround;
   gl_FragColor = vec4(lit + hot, a);
 }
 `

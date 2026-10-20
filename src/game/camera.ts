@@ -117,15 +117,17 @@ export class CameraRig {
     let fov = 62 + this.fovKick
 
     // cinematic override (with blends)
-    if (this.shot) {
+    const shot = this.shot
+    if (shot) {
       this.shotT += rdt
-      const sf = this.shot.frame(this.shotT, _sp, _sl)
-      const kin = this.shot.blendIn > 0 ? clamp(this.shotT / this.shot.blendIn, 0, 1) : 1
+      // a shot may end itself from inside its own frame
+      const sf = shot.frame(this.shotT, _sp, _sl)
+      const kin = shot.blendIn > 0 ? clamp(this.shotT / shot.blendIn, 0, 1) : 1
       const k = kin * kin * (3 - 2 * kin)
       _gp.lerp(_sp, k)
       _gl.lerp(_sl, k)
       fov += (sf - fov) * k
-      if (this.shotT >= this.shot.dur) this.stopShot()
+      if (this.shot === shot && this.shotT >= shot.dur) this.stopShot()
     } else if (this.outBlend > 0) {
       this.outBlend = Math.max(0, this.outBlend - rdt)
       const kk = Math.min(1, this.outBlend / this.outDur)

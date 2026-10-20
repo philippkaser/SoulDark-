@@ -52,5 +52,14 @@ export interface ReflectTarget {
 
 export type ParryResult = 'perfect' | 'guard' | 'none'
 
+/** Something dangerous inbound, for the HUD's parry cue and edge arrows. */
+export interface Threat {
+  pos: THREE.Vector3
+  /** Seconds until it reaches the hero. */
+  eta: number
+  tier: Tier
+  label?: string
+}
+
 let nextHitId = 1
 export const newHitId = () => nextHitId++

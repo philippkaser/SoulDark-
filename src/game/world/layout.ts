@@ -13,7 +13,7 @@ export const SUN_DIR = new THREE.Vector3(0.06, 0.3, -1).normalize()
 /** How far away the Eclipse "is" for gameplay (projectile origins). */
 export const ECLIPSE_DIST = 900
 
-export const FOG_COLOR = new THREE.Color('#2a1420')
+export const FOG_COLOR = new THREE.Color('#2a0f16')
 
 export function eclipsePoint(out: THREE.Vector3) {
   return out.copy(SUN_DIR).multiplyScalar(ECLIPSE_DIST)

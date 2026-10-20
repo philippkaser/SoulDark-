@@ -44,10 +44,10 @@ export function groundMaterial(scorch: ScorchMap, quality: Quality) {
           float b = smoothstep(0.05, 0.0, big.y - big.x);
           return max(f * 0.7, b);
         }
-        float gHeight(vec2 p, float cr) {
-          float h = gFbm(p * 0.08) * 0.6 + gFbm(p * 0.7) * 0.3 - cr * 0.4;
+        float gHeight(vec2 p, float cr, float lod) {
+          float h = gFbm(p * 0.08) * 0.6 + gFbm(p * 0.7) * 0.3 * (1.0 - lod) - cr * 0.4;
           #if ${detail}
-          h += gNoise(p * 4.0) * 0.08 + gNoise(p * 11.0) * 0.03;
+          h += (gNoise(p * 4.0) * 0.08 + gNoise(p * 11.0) * 0.03) * (1.0 - lod);
           #endif
           return h;
         }`,
@@ -56,13 +56,15 @@ export function groundMaterial(scorch: ScorchMap, quality: Quality) {
         '#include <map_fragment>',
         /* glsl */ `
         vec2 gp = vGPos.xz;
+        // fade fine detail with distance so the far plain doesn't shimmer
+        float lod = clamp(length(fwidth(gp)) * 1.5 - 0.15, 0.0, 1.0);
         vec3 cv;
-        float crack = gCrack(gp, cv);
-        float gh = gHeight(gp, crack);
+        float crack = gCrack(gp, cv) * (1.0 - lod * 0.85);
+        float gh = gHeight(gp, crack, lod);
         float ash = smoothstep(0.4, 0.8, gFbm(gp * 0.02 + 3.0));
-        vec3 basalt = mix(vec3(0.04, 0.034, 0.036), vec3(0.09, 0.07, 0.064), gFbm(gp * 0.25));
-        basalt *= 0.8 + 0.4 * gNoise(gp * 1.7);
-        vec3 ashCol = vec3(0.22, 0.19, 0.17) * (0.8 + gNoise(gp * 2.0) * 0.4);
+        vec3 basalt = mix(vec3(0.028, 0.022, 0.024), vec3(0.065, 0.048, 0.045), gFbm(gp * 0.25));
+        basalt *= 0.8 + 0.4 * mix(gNoise(gp * 1.7), 0.5, lod);
+        vec3 ashCol = vec3(0.16, 0.135, 0.12) * (0.8 + gNoise(gp * 2.0) * 0.4);
         vec3 alb = mix(basalt, ashCol, ash * 0.7);
         alb *= 1.0 - crack * 0.6;
         // battle scars
@@ -82,12 +84,12 @@ export function groundMaterial(scorch: ScorchMap, quality: Quality) {
         /* glsl */ `#include <emissivemap_fragment>
         float pulse = 0.7 + 0.3 * sin(uTime * 1.3 + cv.z * 30.0);
         vec3 bv = cv;
-        float jag = (gNoise(gp * 3.0) - 0.5) * 0.012;
-        float lava = smoothstep(0.012, 0.0, bv.y - bv.x + jag) * step(0.78, bv.z) * smoothstep(0.5, 0.75, gNoise(gp * 0.05 + 4.0));
-        totalEmissiveRadiance += vec3(1.0, 0.22, 0.03) * lava * 0.6 * pulse * uEmber;
+        float jag = (gNoise(gp * 3.0) - 0.5) * 0.01;
+        float lava = smoothstep(0.006, 0.0, bv.y - bv.x + jag) * step(0.82, bv.z) * smoothstep(0.55, 0.8, gNoise(gp * 0.05 + 4.0));
+        totalEmissiveRadiance += vec3(1.0, 0.2, 0.03) * lava * 0.3 * pulse * uEmber;
         float hn = gNoise(gp * 1.5 - uTime * 0.3);
         float hot = heat * heat;
-        totalEmissiveRadiance += mix(vec3(1.2, 0.18, 0.02), vec3(3.2, 1.6, 0.5), hot) * heat * (0.9 + hn * 1.1);`,
+        totalEmissiveRadiance += mix(vec3(0.9, 0.12, 0.02), vec3(2.2, 0.9, 0.25), hot) * heat * (0.6 + hn * 0.9);`,
       )
   }
   mat.customProgramCacheKey = () => `ground-v1-${detail}`

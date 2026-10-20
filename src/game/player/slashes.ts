@@ -147,6 +147,13 @@ export class Slashes {
       }
       c.prev.copy(c.pos)
       c.pos.addScaledVector(c.dir, c.speed * dt)
+      // aimed into the ground: skim along it instead of burrowing
+      if (c.pos.y < 1 && c.dir.y < 0 && !c.visualOnly) {
+        c.pos.y = 1
+        c.dir.y = 0
+        c.dir.normalize()
+        this.orient(c)
+      }
       const age = 1 - c.life / c.maxLife
       const w = c.width * (1 + age * 0.6)
       c.mesh.position.copy(c.pos)
