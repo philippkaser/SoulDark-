@@ -1,122 +1,178 @@
 import * as THREE from 'three'
-import { collide, raycastTall } from '../../shared/collision'
-import { BONFIRE, inArena } from '../../shared/level'
-import { angleDiff, clamp, damp, yawTo } from '../../shared/math'
-import type { InputFrame } from '../input/input'
-import type { PlayerController } from './player/controller'
-import { world } from './world'
+import { clamp, damp } from '../engine/math'
+
+/** A scripted camera move. `frame` writes position + look target and returns the FOV. */
+export interface Shot {
+  dur: number
+  /** Seconds to blend in from (and back out to) the gameplay camera. */
+  blendIn: number
+  blendOut: number
+  frame(t: number, pos: THREE.Vector3, look: THREE.Vector3): number
+}
+
+export interface CamSubject {
+  pos: THREE.Vector3
+  /** Extra framing distance (bigger fights pull the camera back). */
+  framing: number
+}
 
 const _dir = new THREE.Vector3()
-const _look = new THREE.Vector3()
+const _right = new THREE.Vector3()
+const _sp = new THREE.Vector3()
+const _sl = new THREE.Vector3()
+const _gp = new THREE.Vector3()
+const _gl = new THREE.Vector3()
 
-export class CameraController {
+/**
+ * Over-the-shoulder action camera with trauma shake, FOV punches and
+ * blended cinematic shots. Also owns the aim ray every attack follows.
+ */
+export class CameraRig {
   yaw = Math.PI
-  pitch = 0.2
-  dist = 4.4
-  focus = new THREE.Vector3()
-  pos = new THREE.Vector3()
-  private look = new THREE.Vector3()
-  private fov = 55
+  pitch = 0.12
+  dist = 6.5
+  readonly focus = new THREE.Vector3()
+  readonly pos = new THREE.Vector3()
+  readonly look = new THREE.Vector3()
+  /** Aim ray (from the camera through the crosshair) and where it lands. */
+  readonly aimOrigin = new THREE.Vector3()
+  readonly aimDir = new THREE.Vector3(0, 0, -1)
+  readonly aimPoint = new THREE.Vector3()
+  trauma = 0
+  shakeScale = 1
+  private fov = 62
+  private fovKick = 0
   private time = 0
   private ready = false
-  private collDist = 4.4
+  private shot: Shot | null = null
+  private shotT = 0
+  private outBlend = 0
+  private outDur = 1
+  private outFrom = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62 }
+  private punch = new THREE.Vector3()
 
-  snap(player: PlayerController) {
-    this.yaw = player.yaw
-    this.pitch = 0.2
-    this.focus.set(player.x, 1.55, player.z)
+  snap(pos: THREE.Vector3, yaw: number) {
+    this.yaw = yaw
+    this.pitch = 0.12
+    this.focus.copy(pos).setY(pos.y + 1.6)
     this.ready = false
   }
 
-  update(dt: number, f: InputFrame, player: PlayerController, cam: THREE.PerspectiveCamera, inputEnabled: boolean) {
-    this.time += dt
-    const lock = player.lock?.targetable ? player.lock : null
+  addTrauma(a: number) {
+    this.trauma = Math.min(1.3, this.trauma + a * this.shakeScale)
+  }
 
-    if (inputEnabled && !lock) {
-      this.yaw -= f.lookX
-      this.pitch = clamp(this.pitch + f.lookY, -0.4, 1.15)
+  kickFov(deg: number) {
+    this.fovKick = Math.max(this.fovKick, deg)
+  }
+
+  /** Directional camera punch (recoil). */
+  kick(dir: THREE.Vector3, amount: number) {
+    this.punch.addScaledVector(dir, amount * this.shakeScale)
+  }
+
+  play(shot: Shot) {
+    this.shot = shot
+    this.shotT = 0
+  }
+
+  get cinematic() {
+    return this.shot !== null
+  }
+
+  stopShot() {
+    if (!this.shot) return
+    this.outFrom.pos.copy(this.pos)
+    this.outFrom.look.copy(this.look)
+    this.outFrom.fov = this.fov
+    this.outBlend = this.shot.blendOut
+    this.outDur = Math.max(0.001, this.shot.blendOut)
+    this.shot = null
+  }
+
+  update(rdt: number, lookX: number, lookY: number, subject: CamSubject, cam: THREE.PerspectiveCamera, steer: boolean) {
+    this.time += rdt
+    if (steer && !this.shot) {
+      this.yaw -= lookX
+      this.pitch = clamp(this.pitch + lookY, -0.75, 1.2)
     }
 
-    if (lock) {
-      const want = yawTo(player.x, player.z, lock.x, lock.z)
-      this.yaw += angleDiff(this.yaw, want) * damp(7, dt)
-      const big = lock.def.height > 3
-      const d = Math.hypot(lock.x - player.x, lock.z - player.z)
-      const wantPitch = clamp((big ? 0.3 : 0.2) + (big ? Math.max(0, 6 - d) * 0.04 : 0), 0.05, 0.6)
-      this.pitch += (wantPitch - this.pitch) * damp(4, dt)
-    } else if (!inputEnabled && !player.dead) {
-      // gentle auto-follow when the mouse is free (menus)
-    }
-
-    // follow the player with a little lag
-    const fy = 1.5 + (player.action === 'rest' ? -0.35 : 0)
-    const kx = this.ready ? damp(14, dt) : 1
-    const ky = this.ready ? damp(8, dt) : 1
-    this.focus.x += (player.x - this.focus.x) * kx
-    this.focus.z += (player.z - this.focus.z) * kx
-    this.focus.y += (fy - this.focus.y) * ky
-
-    const bossFight = world.flags.boss === 1 && inArena(player.x, player.z)
-    const want = lock?.type === 'boss' || bossFight ? 6.2 : player.dead ? 5.5 : 4.4
-    this.dist += (want - this.dist) * damp(2.5, dt)
+    // follow the subject with a little lag (more vertical lag for leaps)
+    const kx = this.ready ? damp(16, rdt) : 1
+    const ky = this.ready ? damp(7, rdt) : 1
+    this.focus.x += (subject.pos.x - this.focus.x) * kx
+    this.focus.z += (subject.pos.z - this.focus.z) * kx
+    this.focus.y += (subject.pos.y + 1.65 - this.focus.y) * ky
+    const want = 6.4 + subject.framing
+    this.dist += (want - this.dist) * damp(2.5, rdt)
 
     _dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), -Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch))
-    let tx = this.focus.x - _dir.x * this.dist
-    let tz = this.focus.z - _dir.z * this.dist
-    // pull in when a pillar is in the way
-    const frac = raycastTall(this.focus.x, this.focus.z, tx, tz, 0.35)
-    const wantColl = Math.max(0.9, this.dist * frac)
-    this.collDist += (wantColl - this.collDist) * damp(wantColl < this.collDist ? 30 : 4, dt)
-    if (!this.ready) this.collDist = wantColl
-    tx = this.focus.x - _dir.x * this.collDist
-    tz = this.focus.z - _dir.z * this.collDist
-    let ty = this.focus.y - _dir.y * this.collDist
-    ;[tx, tz] = collide(tx, tz, 0, { fogClosed: false, skipObstacles: true, zoneMargin: 3 })
-    ty = Math.max(0.35, ty)
-    this.pos.set(tx, ty, tz)
+    _right.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw))
+    const shoulder = 0.75
+    _gl.copy(this.focus).addScaledVector(_right, shoulder)
+    _gp.copy(_gl).addScaledVector(_dir, -this.dist)
+    _gp.y = Math.max(0.45, _gp.y)
+    // when looking up, keep the camera low behind the hero
+    if (this.pitch < 0) _gp.y = Math.max(0.45, _gp.y + this.pitch * 1.5)
+    let fov = 62 + this.fovKick
 
-    // look point: between the player and the lock target
-    this.look.copy(this.focus)
-    if (lock) {
-      _look.set(lock.x, lock.def.height * 0.55, lock.z)
-      this.look.lerp(_look, lock.type === 'boss' ? 0.32 : 0.22)
+    // cinematic override (with blends)
+    if (this.shot) {
+      this.shotT += rdt
+      const sf = this.shot.frame(this.shotT, _sp, _sl)
+      const kin = this.shot.blendIn > 0 ? clamp(this.shotT / this.shot.blendIn, 0, 1) : 1
+      const k = kin * kin * (3 - 2 * kin)
+      _gp.lerp(_sp, k)
+      _gl.lerp(_sl, k)
+      fov += (sf - fov) * k
+      if (this.shotT >= this.shot.dur) this.stopShot()
+    } else if (this.outBlend > 0) {
+      this.outBlend = Math.max(0, this.outBlend - rdt)
+      const kk = Math.min(1, this.outBlend / this.outDur)
+      const s = kk * kk * (3 - 2 * kk)
+      _gp.lerp(this.outFrom.pos, s)
+      _gl.lerp(this.outFrom.look, s)
+      fov += (this.outFrom.fov - fov) * s
     }
+    this.pos.copy(_gp)
+    this.look.copy(_gl)
 
-    // trauma-based shake
-    world.shake = Math.max(0, world.shake - dt * 1.5)
-    const tr = world.shake * world.shake
-    const t = this.time * 40
-    const sx = (Math.sin(t * 1.1) + Math.sin(t * 2.3 + 1.3) * 0.5) * tr * 0.18
-    const sy = (Math.sin(t * 1.7 + 2.1) + Math.sin(t * 2.9) * 0.5) * tr * 0.18
-    const roll = Math.sin(t * 0.9 + 0.4) * tr * 0.045
+    // trauma shake + punch
+    this.trauma = Math.max(0, this.trauma - rdt * 1.4)
+    const tr = this.trauma * this.trauma
+    const t = this.time * 38
+    const sx = (Math.sin(t * 1.1) + Math.sin(t * 2.3 + 1.3) * 0.5) * tr * 0.28
+    const sy = (Math.sin(t * 1.7 + 2.1) + Math.sin(t * 2.9) * 0.5) * tr * 0.28
+    const roll = Math.sin(t * 0.9 + 0.4) * tr * 0.05
+    this.punch.multiplyScalar(Math.exp(-rdt * 10))
 
-    cam.position.set(this.pos.x + sx, this.pos.y + sy, this.pos.z)
+    cam.position.set(this.pos.x + sx + this.punch.x, this.pos.y + sy + this.punch.y, this.pos.z + this.punch.z)
     cam.lookAt(this.look)
     cam.rotateZ(roll)
 
-    const wantFov = player.sprinting ? 61 : 55
-    this.fov += (wantFov - this.fov) * damp(4, dt)
+    this.fovKick *= Math.exp(-rdt * 5)
+    this.fov += (fov - this.fov) * damp(10, rdt)
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov
       cam.updateProjectionMatrix()
     }
     this.ready = true
-    world.cameraYaw = this.yaw
-    world.cameraPitch = this.pitch
+
+    // aim ray through the screen centre
+    cam.updateMatrixWorld()
+    this.aimOrigin.copy(cam.position)
+    cam.getWorldDirection(this.aimDir)
+    const far = 420
+    if (this.aimDir.y < -0.01) {
+      const tHit = -this.aimOrigin.y / this.aimDir.y
+      this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, Math.min(far, tHit))
+    } else {
+      this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, far)
+    }
   }
 
-  /** Slow cinematic orbit around the bonfire for the title screen. */
-  title(dt: number, cam: THREE.PerspectiveCamera) {
-    this.time += dt
-    const a = this.time * 0.05 + 2.4
-    const r = 9.5
-    cam.position.set(BONFIRE.x + Math.sin(a) * r, 2.6 + Math.sin(this.time * 0.2) * 0.3, BONFIRE.z + Math.cos(a) * r)
-    cam.lookAt(BONFIRE.x, 1.4, BONFIRE.z)
-    if (cam.fov !== 50) {
-      cam.fov = 50
-      cam.updateProjectionMatrix()
-    }
-    world.cameraYaw = a + Math.PI
-    this.ready = false
+  /** Horizontal yaw the camera is facing. */
+  get aimYaw() {
+    return Math.atan2(this.aimDir.x, this.aimDir.z)
   }
 }

@@ -1,131 +1,118 @@
 import { create } from 'zustand'
-import { levelCost, statsLevel, type Stats } from '../../shared/combat'
-import type { GroundMessage, Look } from '../../shared/protocol'
-import { loadSave, persist, type SaveData, type Settings } from './save'
+import { loadSave, persist, type SaveData, type Settings } from './settings'
 
-export type BannerKind = 'death' | 'victory' | 'lit' | 'info' | 'retrieved'
-export type Menu = null | 'bonfire' | 'levelup' | 'compose' | 'read' | 'pause' | 'gestures'
+export type Screen = 'title' | 'game' | 'results'
+export type Mode = 'campaign' | 'sandbox'
 
 export interface Banner {
   id: number
-  text: string
-  kind: BannerKind
+  kind: 'wave' | 'warning' | 'boss' | 'victory' | 'death' | 'info'
+  title: string
   sub?: string
 }
 
-export interface ChatLine {
+export interface Stamp {
   id: number
-  name: string
   text: string
-  at: number
-  system?: boolean
+  kind: 'parry' | 'perfect' | 'divine' | 'feat' | 'rank' | 'warn'
 }
 
 export interface BossBar {
+  id: string
   name: string
   hp: number
   max: number
 }
 
-interface UIState {
-  screen: 'title' | 'loading' | 'game'
-  mode: 'online' | 'offline' | null
-  roomName: string
-  save: SaveData
-  prompt: string | null
-  banner: Banner | null
-  boss: BossBar | null
-  menu: Menu
-  reading: GroundMessage | null
-  chat: ChatLine[]
-  chatOpen: boolean
-  remotesVersion: number
-  worldVersion: number
-  pointerLocked: boolean
-  showControls: boolean
-
-  setScreen: (s: UIState['screen']) => void
-  setMode: (m: UIState['mode'], room: string) => void
-  setPrompt: (p: string | null) => void
-  showBanner: (text: string, kind: BannerKind, sub?: string) => void
-  clearBanner: (id?: number) => void
-  setBoss: (b: BossBar | null) => void
-  setMenu: (m: Menu) => void
-  setReading: (m: GroundMessage | null) => void
-  pushChat: (line: Omit<ChatLine, 'id' | 'at'>) => void
-  setChatOpen: (v: boolean) => void
-  bumpRemotes: () => void
-  bumpWorld: () => void
-  setPointerLocked: (v: boolean) => void
-  setShowControls: (v: boolean) => void
-
-  updateSave: (patch: Partial<SaveData>) => void
-  setIdentity: (name: string, look: Look, room: string) => void
-  updateSettings: (patch: Partial<Settings>) => void
-  addSouls: (n: number) => void
-  levelUp: (stat: keyof Stats) => boolean
+export interface Results {
+  victory: boolean
+  score: number
+  rank: number
+  wave: number
+  tally: import('../game/score').Tally
+  time: number
 }
 
-let bannerId = 1
-let chatId = 1
+interface UIState {
+  screen: Screen
+  mode: Mode
+  paused: boolean
+  panel: 'pause' | 'settings' | 'controls' | null
+  save: SaveData
+  banner: Banner | null
+  stamps: Stamp[]
+  objective: string | null
+  bosses: BossBar[]
+  warning: string | null
+  results: Results | null
+  dead: boolean
+  pointerLocked: boolean
+  showHelp: boolean
+
+  setScreen: (s: Screen) => void
+  setMode: (m: Mode) => void
+  setPaused: (p: boolean, panel?: UIState['panel']) => void
+  setPanel: (p: UIState['panel']) => void
+  showBanner: (b: Omit<Banner, 'id'>) => void
+  clearBanner: () => void
+  stamp: (text: string, kind: Stamp['kind']) => void
+  dropStamp: (id: number) => void
+  setObjective: (o: string | null) => void
+  setBosses: (b: BossBar[]) => void
+  setWarning: (w: string | null) => void
+  setResults: (r: Results | null) => void
+  setDead: (d: boolean) => void
+  setPointerLocked: (v: boolean) => void
+  setShowHelp: (v: boolean) => void
+  updateSave: (patch: Partial<SaveData>) => void
+  updateSettings: (patch: Partial<Settings>) => void
+}
+
+let nextId = 1
 
 export const useUI = create<UIState>((set, get) => ({
   screen: 'title',
-  mode: null,
-  roomName: 'lordran',
+  mode: 'campaign',
+  paused: false,
+  panel: null,
   save: loadSave(),
-  prompt: null,
   banner: null,
-  boss: null,
-  menu: null,
-  reading: null,
-  chat: [],
-  chatOpen: false,
-  remotesVersion: 0,
-  worldVersion: 0,
+  stamps: [],
+  objective: null,
+  bosses: [],
+  warning: null,
+  results: null,
+  dead: false,
   pointerLocked: false,
-  showControls: false,
+  showHelp: true,
 
   setScreen: (screen) => set({ screen }),
-  setMode: (mode, roomName) => set({ mode, roomName }),
-  setPrompt: (prompt) => {
-    if (get().prompt !== prompt) set({ prompt })
+  setMode: (mode) => set({ mode }),
+  setPaused: (paused, panel = paused ? 'pause' : null) => set({ paused, panel }),
+  setPanel: (panel) => set({ panel }),
+  showBanner: (b) => set({ banner: { ...b, id: nextId++ } }),
+  clearBanner: () => set({ banner: null }),
+  stamp: (text, kind) => set((s) => ({ stamps: [...s.stamps.slice(-4), { id: nextId++, text, kind }] })),
+  dropStamp: (id) => set((s) => ({ stamps: s.stamps.filter((x) => x.id !== id) })),
+  setObjective: (objective) => {
+    if (get().objective !== objective) set({ objective })
   },
-  showBanner: (text, kind, sub) => set({ banner: { id: bannerId++, text, kind, sub } }),
-  clearBanner: (id) => {
-    const b = get().banner
-    if (!b || (id !== undefined && b.id !== id)) return
-    set({ banner: null })
+  setBosses: (bosses) => {
+    const cur = get().bosses
+    if (cur.length === bosses.length && cur.every((b, i) => b.id === bosses[i].id && Math.round(b.hp) === Math.round(bosses[i].hp) && b.max === bosses[i].max)) return
+    set({ bosses })
   },
-  setBoss: (boss) => {
-    const cur = get().boss
-    if (cur === boss) return
-    if (cur && boss && cur.hp === boss.hp && cur.max === boss.max && cur.name === boss.name) return
-    set({ boss })
+  setWarning: (warning) => {
+    if (get().warning !== warning) set({ warning })
   },
-  setMenu: (menu) => set({ menu }),
-  setReading: (reading) => set({ reading }),
-  pushChat: (line) =>
-    set((s) => ({ chat: [...s.chat.slice(-30), { ...line, id: chatId++, at: performance.now() }] })),
-  setChatOpen: (chatOpen) => set({ chatOpen }),
-  bumpRemotes: () => set((s) => ({ remotesVersion: s.remotesVersion + 1 })),
-  bumpWorld: () => set((s) => ({ worldVersion: s.worldVersion + 1 })),
+  setResults: (results) => set({ results }),
+  setDead: (dead) => set({ dead }),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
-  setShowControls: (showControls) => set({ showControls }),
-
+  setShowHelp: (showHelp) => set({ showHelp }),
   updateSave: (patch) => {
     const save = { ...get().save, ...patch }
     persist(save)
     set({ save })
   },
-  setIdentity: (name, look, room) => get().updateSave({ name, look, room }),
   updateSettings: (patch) => get().updateSave({ settings: { ...get().save.settings, ...patch } }),
-  addSouls: (n) => get().updateSave({ souls: Math.max(0, get().save.souls + n) }),
-  levelUp: (stat) => {
-    const { save } = get()
-    const cost = levelCost(statsLevel(save.stats))
-    if (save.souls < cost || save.stats[stat] >= 60) return false
-    get().updateSave({ souls: save.souls - cost, stats: { ...save.stats, [stat]: save.stats[stat] + 1 } })
-    return true
-  },
 }))

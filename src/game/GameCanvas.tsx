@@ -1,133 +1,139 @@
+import { Environment, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useRef, useState } from 'react'
+import { Bloom, EffectComposer, SMAA, ToneMapping, Vignette } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
+import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 import * as THREE from 'three'
-import { BONFIRE } from '../../shared/level'
-import { audio } from '../audio/audio'
+import { PowerFXEffect } from '../engine/gfx/powerfx'
 import { input } from '../input/input'
-import type { Quality } from '../state/save'
+import type { Quality } from '../state/settings'
 import { useUI } from '../state/store'
-import { World } from './env/Scene'
-import { SunDisc, SUN_DIR } from './env/Sky'
-import { PostFX } from './PostFX'
-import type { GameSession } from './session'
-import { world } from './world'
+import { createGame } from './create'
+import type { Game } from './Game'
+import { SUN_DIR } from './world/layout'
 
-function TitleCamera() {
-  const { camera } = useThree()
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    const a = t * 0.045 + 2.6
-    camera.position.set(BONFIRE.x + Math.sin(a) * 9.5, 2.5 + Math.sin(t * 0.2) * 0.3, BONFIRE.z + Math.cos(a) * 9.5)
-    camera.lookAt(BONFIRE.x, 1.5, BONFIRE.z)
-    world.cameraYaw = a + Math.PI
-    audio.setListener(camera.position.x, camera.position.z, world.cameraYaw)
-    audio.update(1 / 60, 6, false)
-  })
-  return null
-}
-
-/** Soft fill light riding with the camera so backlit characters stay readable. */
 function CameraFill() {
   const light = useRef<THREE.PointLight>(null!)
   useFrame(({ camera }) => {
     light.current.position.copy(camera.position)
-    light.current.position.y += 0.6
+    light.current.position.y += 0.8
   })
-  return <pointLight ref={light} color="#b8c6e0" intensity={5} distance={14} decay={2} />
+  return <pointLight ref={light} color="#ffd2b0" intensity={7} distance={16} decay={2} />
 }
 
-function SessionLayer({ session }: { session: GameSession }) {
-  const { camera, size, gl } = useThree()
+function Stage({ quality, onGame }: { quality: Quality; onGame: (g: Game | null) => void }) {
+  const { camera, gl, scene, size } = useThree()
+  const game = useMemo(() => createGame(quality, camera as THREE.PerspectiveCamera), [quality, camera])
+
   useEffect(() => {
-    world.camera = camera as THREE.PerspectiveCamera
+    game.attach(scene)
     input.attach(gl.domElement)
     input.onLockChange = (locked) => {
       const ui = useUI.getState()
       ui.setPointerLocked(locked)
-      // losing pointer lock in-game (Esc) opens the pause menu
-      if (!locked && ui.screen === 'game' && !ui.menu && !ui.chatOpen && !session.player.dead) ui.setMenu('pause')
+      if (!locked && ui.screen === 'game' && !ui.paused && !ui.dead) ui.setPaused(true)
     }
-    session.showPlayer()
+    onGame(game)
+    if (import.meta.env.DEV) {
+      // automation: advance the simulation deterministically at 60 Hz
+      const step = (sec: number) => {
+        const n = Math.round(sec * 60)
+        for (let i = 0; i < n; i++) game.update(1 / 60, input.poll(1 / 60, 1, false), true)
+      }
+      Object.assign(window, { __sky: { game, input, ui: useUI, THREE, step } })
+    }
     return () => {
       input.detach()
       input.onLockChange = undefined
+      onGame(null)
     }
-  }, [gl, session])
-
-  // one-shot performance check: step the preset down if this machine struggles
-  const perf = useRef({ t: 0, frames: 0, done: new URLSearchParams(location.search).has('q') })
-  useFrame((_, delta) => {
-    const pc = perf.current
-    if (!pc.done) {
-      pc.t += delta
-      if (pc.t > 4) pc.frames++
-      if (pc.t > 10) {
-        pc.done = true
-        const fps = pc.frames / (pc.t - 4)
-        const ui = useUI.getState()
-        const q = ui.save.settings.quality
-        const next = q === 'high' && fps < 42 ? 'medium' : q === 'medium' && fps < 30 ? 'low' : null
-        if (next) {
-          ui.updateSettings({ quality: next })
-          ui.pushChat({ name: '', system: true, text: `Graphics lowered to ${next} (${Math.round(fps)} fps). Change it any time in the menu.` })
-        }
-      }
-    }
-  })
+  }, [game, gl, scene, onGame])
 
   useFrame((_, delta) => {
-    const dt = Math.min(delta, 1 / 20)
     const ui = useUI.getState()
     const s = ui.save.settings
-    input.enabled = !ui.menu && !ui.chatOpen
-    const f = input.poll(dt, s.sensitivity, s.invertY)
-    const p = session.player
-
-    if (f.menu) {
-      if (ui.chatOpen) ui.setChatOpen(false)
-      else if (ui.menu === 'bonfire') {
-        ui.setMenu(null)
-        p.standUp()
-      } else if (ui.menu) ui.setMenu(null)
-      else ui.setMenu('pause')
+    const playing = ui.screen === 'game'
+    input.enabled = playing && !ui.paused && !ui.dead
+    const f = input.poll(Math.min(delta, 1 / 20), s.sensitivity, s.invertY)
+    if (f.menu && playing && !ui.dead) {
+      if (ui.paused) {
+        ui.setPaused(false)
+        input.requestLock()
+      } else ui.setPaused(true)
     }
-    if (input.enabled && !p.dead) {
-      if (f.chat) {
-        ui.setChatOpen(true)
-        input.releaseLock()
-      } else if (f.gesture && !p.action) {
-        ui.setMenu('gestures')
-      } else if (f.compose && !p.action) {
-        ui.setMenu('compose')
-        input.releaseLock()
-      }
-    }
-    session.update(dt, camera as THREE.PerspectiveCamera, f, { height: size.height * gl.getPixelRatio() })
+    game.viewportH = size.height * gl.getPixelRatio()
+    game.post.reduce = s.reduceFlashes
+    game.cam.shakeScale = s.shake
+    if (ui.paused && playing) return
+    game.update(delta, f, input.enabled)
+    game.director?.input(f)
   })
-  return <primitive object={session.root} />
+
+  return <primitive object={game.root} />
 }
 
-export function GameCanvas({ session, quality }: { session: GameSession | null; quality: Quality }) {
-  const [sun, setSun] = useState<THREE.Mesh | null>(null)
+function PowerPass({ game }: { game: Game | null }) {
+  const effect = useMemo(() => new PowerFXEffect(), [])
+  useFrame(({ clock }) => {
+    if (!game) return
+    const p = game.post
+    effect.set('uFlash', p.flash)
+    effect.uniforms.get('uFlashColor')!.value.copy(p.flashColor)
+    effect.set('uInvert', p.invert)
+    effect.set('uZoom', p.zoom)
+    effect.uniforms.get('uCenter')!.value.copy(p.center)
+    effect.set('uLines', p.lines)
+    effect.set('uChroma', p.chroma)
+    effect.set('uDesat', p.desat)
+    effect.uniforms.get('uTint')!.value.copy(p.tint)
+    effect.uniforms.get('uShockCenter')!.value.copy(p.shockCenter)
+    effect.set('uShockRadius', p.shockRadius)
+    effect.set('uShockStrength', p.shockStrength)
+    effect.set('uHurt', p.hurt)
+    effect.set('uClock', clock.elapsedTime)
+  })
+  return <primitive object={effect} />
+}
+
+function Post({ quality, game }: { quality: Quality; game: Game | null }) {
+  const effects: ReactElement[] = [
+    <Bloom key="bloom" mipmapBlur intensity={1.15} luminanceThreshold={0.9} luminanceSmoothing={0.25} radius={0.8} />,
+    <ToneMapping key="tm" mode={ToneMappingMode.AGX} />,
+    <Vignette key="vg" offset={0.24} darkness={0.72} />,
+  ]
+  if (quality !== 'low') effects.push(<SMAA key="smaa" />)
+  effects.push(<PowerPass key="power" game={game} />)
+  return (
+    <EffectComposer multisampling={0} stencilBuffer={false} autoClear={false}>
+      {effects}
+    </EffectComposer>
+  )
+}
+
+export function GameCanvas({ quality, game, onGame }: { quality: Quality; game: Game | null; onGame: (g: Game | null) => void }) {
   const dpr: [number, number] = quality === 'high' ? [1, 1.5] : quality === 'medium' ? [1, 1.25] : [0.75, 1]
   return (
     <Canvas
-      shadows="soft"
+      shadows
       dpr={dpr}
       gl={{ antialias: false, powerPreference: 'high-performance', stencil: false, preserveDrawingBuffer: false }}
-      camera={{ fov: 55, near: 0.1, far: 1600, position: [0, 3, 52] }}
-      onCreated={({ gl, camera }) => {
+      camera={{ fov: 62, near: 0.25, far: 6000, position: [0, 3, 8] }}
+      onCreated={({ gl }) => {
         gl.shadowMap.type = THREE.PCFShadowMap
-        if (import.meta.env.DEV) Object.assign(window, { __gl: gl, __THREE: THREE })
-        camera.lookAt(SUN_DIR.clone().multiplyScalar(100))
+        gl.localClippingEnabled = true
       }}
       style={{ position: 'fixed', inset: 0 }}
     >
-      <World quality={quality} />
-      <SunDisc ref={setSun} />
+      <Environment resolution={128} frames={1} environmentIntensity={0.7}>
+        <Lightformer form="rect" intensity={1.1} color="#8a4a6a" scale={[80, 30, 1]} position={[0, 40, 0]} rotation-x={Math.PI / 2} />
+        <Lightformer form="ring" intensity={4} color="#ffb070" scale={14} position={SUN_DIR.clone().multiplyScalar(60).toArray()} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={0.8} color="#ff6a3a" scale={[140, 8, 1]} position={[0, 3, -70]} />
+        <Lightformer form="rect" intensity={0.5} color="#5a4a8a" scale={[140, 10, 1]} position={[0, 5, 70]} rotation-y={Math.PI} />
+        <Lightformer form="rect" intensity={0.4} color="#3a2a4a" scale={[140, 10, 1]} position={[-70, 5, 0]} rotation-y={Math.PI / 2} />
+      </Environment>
       <CameraFill />
-      {session ? <SessionLayer session={session} /> : <TitleCamera />}
-      <PostFX quality={quality} sun={sun} />
+      <Stage quality={quality} onGame={onGame} />
+      <Post quality={quality} game={game} />
     </Canvas>
   )
 }
