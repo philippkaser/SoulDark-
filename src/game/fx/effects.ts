@@ -265,21 +265,21 @@ export class Effects {
           _p.set(e.p.x + rnd(-s, s), e.p.y + rnd(0, 0.3), e.p.z + rnd(-s, s))
           _v.set(rnd(-1, 1), rnd(0.3, 1.4), rnd(-1, 1))
           const g = rnd(0.25, 0.4)
-          this.soft.spawn(_p, _v, [g, g * 0.92, g * 0.82], 0.32, rnd(0.6, 1.4) * s, rnd(0.9, 1.8), -0.1, 1.6, { grow: 1.5 })
+          this.soft.spawn(_p, _v, [g, g * 0.92, g * 0.82], 0.2, rnd(0.5, 1.1) * s, rnd(0.9, 1.6), -0.1, 1.8, { grow: 1.2 })
         }
         return
       }
       case 'shockwave': {
         const r = e.radius
         this.ring(e.p, r, e.fire ? '#ff6a20' : e.color ?? '#cfc6b8', e.fire ? 0.55 : 0.45)
-        const n = Math.min(80, Math.floor(r * 10))
+        const n = Math.min(40, Math.floor(r * 5))
         for (let i = 0; i < n; i++) {
           const a = Math.random() * Math.PI * 2
-          const d = rnd(0.2, 0.6) * r
-          _p.set(e.p.x + Math.sin(a) * d, 0.15, e.p.z + Math.cos(a) * d)
-          _v.set(Math.sin(a) * rnd(2, 6), rnd(0.5, 2.5), Math.cos(a) * rnd(2, 6))
+          const d = rnd(0.5, 0.9) * r
+          _p.set(e.p.x + Math.sin(a) * d, 0.12, e.p.z + Math.cos(a) * d)
+          _v.set(Math.sin(a) * rnd(2, 5), rnd(0.2, 1.2), Math.cos(a) * rnd(2, 5))
           const g = rnd(0.25, 0.4)
-          this.soft.spawn(_p, _v, [g, g * 0.92, g * 0.82], 0.4, rnd(0.7, 1.6), rnd(0.8, 1.8), 0.2, 2.2, { grow: 1.2 })
+          this.soft.spawn(_p, _v, [g, g * 0.92, g * 0.82], 0.2, rnd(0.5, 1.1), rnd(0.7, 1.4), 0.2, 2.6, { grow: 1.0 })
         }
         for (let i = 0; i < n / 2; i++) {
           _p.set(e.p.x + rnd(-1, 1), 0.2, e.p.z + rnd(-1, 1))

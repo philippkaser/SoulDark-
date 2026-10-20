@@ -23,7 +23,7 @@ export interface Materials {
 
 export function makeMaterials(): Materials {
   return {
-    stone: triplanarMaterial({ tex: blockStoneTexture(), scale: 0.42, tint: '#a8a49c', roughness: 0.95, bump: 2.4, moss: 0.8 }),
+    stone: triplanarMaterial({ tex: blockStoneTexture(), scale: 0.26, tint: '#9b9a96', roughness: 0.95, bump: 2.2, moss: 0.8 }),
     darkStone: triplanarMaterial({ tex: blockStoneTexture(), scale: 0.18, tint: '#6d6a66', roughness: 1, bump: 1.6, moss: 0.3, grime: 0.4 }),
     rock: triplanarMaterial({ tex: rockTexture(), scale: 0.11, tint: '#8a857c', roughness: 1, bump: 3.0, moss: 0.9 }),
     bark: triplanarMaterial({ tex: barkTexture(), scale: 0.6, tint: '#6a5a4a', roughness: 1, bump: 2.5, moss: 0.4 }),
@@ -542,27 +542,43 @@ export function buildArchitecture(m: Materials, quality: 'low' | 'medium' | 'hig
   const rockGeos = [0, 1, 2, 3].map((i) => rockGeometry(100 + i, quality === 'low' ? 1 : 2))
   const rockBuckets: THREE.Matrix4[][] = [[], [], [], []]
   const o = new THREE.Object3D()
-  const placeRock = (x: number, z: number, s: number, sy = 1) => {
+  const placeRock = (x: number, z: number, s: number, sy = 1, clearance = 0.9) => {
+    // never let a rock intrude into walkable space (or the camera's)
+    if (insideZones(x, z, s * clearance + 1.5)) return
     o.position.set(x, -s * 0.15, z)
     o.rotation.set(rr(-0.3, 0.3), rand() * TAU, rr(-0.3, 0.3))
     o.scale.set(s * rr(0.8, 1.3), s * sy * rr(0.7, 1.2), s * rr(0.8, 1.3))
     o.updateMatrix()
     rockBuckets[Math.floor(rand() * 4)].push(o.matrix.clone())
   }
-  for (const r of rockSpots) placeRock(r.x, r.z, r.s)
-  // a ring of cliffs around the whole area
-  for (let i = 0; i < 80; i++) {
-    const a = (i / 80) * TAU
-    const north = Math.abs(Math.atan2(Math.sin(a - Math.PI), Math.cos(a - Math.PI))) < 0.45
-    const d = rr(48, 60) + Math.sin(a * 3) * 5
-    placeRock(Math.sin(a) * d * 0.82, -14 + Math.cos(a) * d * 1.55, north ? rr(3, 6) : rr(7, 14), north ? rr(0.6, 1.0) : rr(1.2, 2.2))
+  for (const r of rockSpots) placeRock(r.x, r.z, r.s, 1, 1.2)
+  // cliffs: pushed outward from every zone boundary
+  for (const zone of ZONES) {
+    const pts: Array<[number, number, number, number]> = []
+    if (zone.kind === 'circle') {
+      const n = Math.ceil((TAU * zone.r) / 7)
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU
+        pts.push([zone.x + Math.sin(a) * zone.r, zone.z + Math.cos(a) * zone.r, Math.sin(a), Math.cos(a)])
+      }
+    } else {
+      for (let z = zone.z0; z <= zone.z1; z += 7) {
+        pts.push([zone.x0, z, -1, 0], [zone.x1, z, 1, 0])
+      }
+    }
+    for (const [bx, bz, nx, nz] of pts) {
+      const north = bz < ARENA.z - ARENA.r * 0.6 && Math.abs(bx) < 20
+      const sz = north ? rr(3, 6) : rr(7, 13)
+      const d = sz * 1.7 + rr(3, 6)
+      placeRock(bx + nx * d, bz + nz * d, sz, north ? rr(0.6, 1.0) : rr(1.2, 2.1), 1.6)
+    }
   }
   // distant mountains (leaving the cathedral in view)
   for (let i = 0; i < 40; i++) {
     const a = (i / 40) * TAU + rr(-0.05, 0.05)
     if (Math.abs(Math.atan2(Math.sin(a - Math.PI), Math.cos(a - Math.PI))) < 0.4) continue
     const d = rr(170, 280)
-    placeRock(Math.sin(a) * d, Math.cos(a) * d, rr(25, 55), rr(1.0, 2.4))
+    placeRock(Math.sin(a) * d, Math.cos(a) * d, rr(25, 55), rr(1.0, 2.4), 0.5)
   }
   rockBuckets.forEach((mats, i) => {
     if (!mats.length) return
@@ -573,8 +589,32 @@ export function buildArchitecture(m: Materials, quality: 'low' | 'medium' | 'hig
     root.add(inst)
   })
 
+  mergeByRegion(root)
   root.add(buildCathedral(m))
   return root
+}
+
+/** Merge plain static meshes per material and per area of the level. */
+function mergeByRegion(root: THREE.Group) {
+  const region = (z: number) => (z > 30 ? 0 : z > 12 ? 1 : z > -12 ? 2 : z > -36 ? 3 : 4)
+  const groups = new Map<string, { mat: THREE.Material; meshes: THREE.Mesh[] }>()
+  for (const c of [...root.children]) {
+    const m = c as THREE.Mesh
+    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || (m as THREE.SkinnedMesh).isSkinnedMesh) continue
+    if (m.children.length) continue
+    const mat = m.material as THREE.Material
+    m.updateMatrix()
+    const key = `${mat.uuid}:${region(m.position.z)}:${m.castShadow}`
+    if (!groups.has(key)) groups.set(key, { mat, meshes: [] })
+    groups.get(key)!.meshes.push(m)
+  }
+  for (const { mat, meshes } of groups.values()) {
+    if (meshes.length < 2) continue
+    const geo = merge(meshes.map((m) => m.geometry.clone().applyMatrix4(m.matrix)))
+    for (const m of meshes) root.remove(m)
+    const merged = mesh(geo, mat, meshes[0].castShadow)
+    root.add(merged)
+  }
 }
 
 // ---------------------------------------------------------------------------

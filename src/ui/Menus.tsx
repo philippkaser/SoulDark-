@@ -362,11 +362,57 @@ function Pause({ onQuit }: { onQuit: () => void }) {
   )
 }
 
+/** Gamepad navigation for any open menu: D-pad/stick moves focus, A selects, B backs out. */
+function useGamepadMenu(active: boolean) {
+  useEffect(() => {
+    if (!active) return
+    let raf = 0
+    let prev: boolean[] = []
+    let stickHeld = 0
+    const focusables = () => [...document.querySelectorAll<HTMLElement>('.menu-wrap button:not(:disabled), .menu-wrap .swatch')]
+    const move = (dir: number) => {
+      const list = focusables()
+      if (!list.length) return
+      const i = list.indexOf(document.activeElement as HTMLElement)
+      const next = list[(i + dir + list.length) % list.length] ?? list[0]
+      next.focus()
+      audio.ui('move')
+    }
+    const loop = () => {
+      const pad = Array.from(navigator.getGamepads?.() ?? []).find((g) => g && g.connected)
+      if (pad) {
+        const now = pad.buttons.map((b) => b.pressed)
+        const down = (i: number) => now[i] && !prev[i]
+        const ay = pad.axes[1] ?? 0
+        if (down(12)) move(-1)
+        if (down(13)) move(1)
+        if (Math.abs(ay) > 0.6) {
+          if (stickHeld <= 0) {
+            move(ay > 0 ? 1 : -1)
+            stickHeld = 14
+          } else stickHeld--
+        } else stickHeld = 0
+        if (down(0)) (document.activeElement as HTMLElement | null)?.click()
+        if (down(1)) {
+          const ui = useUI.getState()
+          if (ui.menu === 'levelup') ui.setMenu('bonfire')
+          else if (ui.menu !== 'bonfire') close(false)
+        }
+        prev = now
+      }
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [active])
+}
+
 export function Menus({ session, onQuit }: { session: GameSession; onQuit: () => void }) {
   const menu = useUI((s) => s.menu)
   useEffect(() => {
     if (menu) input.releaseLock()
   }, [menu])
+  useGamepadMenu(!!menu)
   if (!menu) return null
   return (
     <div

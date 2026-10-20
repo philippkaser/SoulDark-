@@ -2,6 +2,7 @@ import { Environment, Lightformer } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ARENA, BONFIRE, CIRCLES, FOG_GATE } from '../../../shared/level'
 import { mulberry32, TAU } from '../../../shared/math'
 import type { Quality } from '../../state/save'
@@ -94,6 +95,7 @@ function Architecture({ mats, quality }: { mats: Materials; quality: Quality }) 
 
 function Bonfire({ mats, quality }: { mats: Materials; quality: Quality }) {
   const light = useRef<THREE.PointLight>(null!)
+  const frame = useRef(0)
   const { group, flames, embers } = useMemo(() => {
     const g = new THREE.Group()
     g.position.set(BONFIRE.x, 0, BONFIRE.z)
@@ -108,25 +110,32 @@ function Bonfire({ mats, quality }: { mats: Materials; quality: Quality }) {
     coals.position.y = 0.22
     g.add(coals)
     const r = mulberry32(7)
+    const stoneGeos: THREE.BufferGeometry[] = []
     for (let i = 0; i < 11; i++) {
       const a = (i / 11) * TAU
-      const st = new THREE.Mesh(rockGeometry(30 + i, 1), mats.stone)
-      st.position.set(Math.sin(a) * 1.25, 0.08, Math.cos(a) * 1.25)
-      st.scale.set(0.24 + r() * 0.1, 0.18 + r() * 0.1, 0.24 + r() * 0.1)
-      st.castShadow = true
-      g.add(st)
+      const g = rockGeometry(30 + i, 1).clone()
+      g.scale(0.24 + r() * 0.1, 0.18 + r() * 0.1, 0.24 + r() * 0.1)
+      g.translate(Math.sin(a) * 1.25, 0.08, Math.cos(a) * 1.25)
+      stoneGeos.push(g)
     }
+    const stones = new THREE.Mesh(mergeGeometries(stoneGeos)!, mats.stone)
+    stones.receiveShadow = true
+    g.add(stones)
     const bone = new THREE.MeshStandardMaterial({ color: '#b7ab93', roughness: 0.8 })
+    const boneGeos: THREE.BufferGeometry[] = []
     for (let i = 0; i < 6; i++) {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.4 + r() * 0.3, 6), bone)
+      const b = new THREE.CylinderGeometry(0.025, 0.03, 0.4 + r() * 0.3, 6).toNonIndexed()
       const a = r() * TAU
-      b.position.set(Math.sin(a) * (0.7 + r() * 0.5), 0.1, Math.cos(a) * (0.7 + r() * 0.5))
-      b.rotation.set(Math.PI / 2 + (r() - 0.5) * 0.3, 0, a)
-      g.add(b)
+      b.rotateX(Math.PI / 2 + (r() - 0.5) * 0.3)
+      b.rotateY(a)
+      b.translate(Math.sin(a) * (0.7 + r() * 0.5), 0.1, Math.cos(a) * (0.7 + r() * 0.5))
+      boneGeos.push(b)
     }
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), bone)
-    skull.position.set(0.85, 0.12, 0.5)
-    g.add(skull)
+    const skullGeo = new THREE.SphereGeometry(0.11, 12, 10).toNonIndexed()
+    skullGeo.translate(0.85, 0.12, 0.5)
+    boneGeos.push(skullGeo)
+    for (const bg of boneGeos) bg.deleteAttribute('uv')
+    g.add(new THREE.Mesh(mergeGeometries(boneGeos)!, bone))
     // the coiled sword
     const blade = bladeGeometry(1.25, 0.05, 0.013)
     const pos = blade.attributes.position as THREE.BufferAttribute
@@ -141,7 +150,6 @@ function Bonfire({ mats, quality }: { mats: Materials; quality: Quality }) {
     const steel = new THREE.MeshStandardMaterial({ color: '#4a4440', metalness: 0.9, roughness: 0.45, emissive: '#ff3a0a', emissiveIntensity: 0.25 })
     const sword = new THREE.Group()
     const bm = new THREE.Mesh(blade, steel)
-    bm.castShadow = true
     sword.add(bm)
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.24, 0.035), steel)
     guard.position.z = -0.02
@@ -179,6 +187,11 @@ function Bonfire({ mats, quality }: { mats: Materials; quality: Quality }) {
     em.uniforms.uScale.value = (state.size.height * state.gl.getPixelRatio()) / (2 * Math.tan(((state.camera as THREE.PerspectiveCamera).fov * Math.PI) / 360))
     const flick = 0.82 + Math.sin(t * 11) * 0.06 + Math.sin(t * 17.3) * 0.05 + Math.sin(t * 5.1) * 0.07
     light.current.intensity = 42 * flick
+    // the cube shadow is expensive: refresh it every other frame
+    const sh = light.current.shadow
+    sh.autoUpdate = false
+    if (frame.current % 2 === 0) sh.needsUpdate = true
+    frame.current++
     light.current.position.set(BONFIRE.x + Math.sin(t * 7) * 0.05, 1.3 + Math.sin(t * 9) * 0.05, BONFIRE.z)
   })
 
@@ -240,21 +253,34 @@ function Braziers({ mats, quality }: { mats: Materials; quality: Quality }) {
     plane.translate(0, 0.5, 0)
     const flames: Array<{ mesh: THREE.Mesh; spot: BrazierSpot; coal: THREE.Mesh; i: number }> = []
     const lights: Array<{ light: THREE.PointLight; spot: BrazierSpot }> = []
+    // one instanced draw for all the iron stands
+    const legParts: THREE.BufferGeometry[] = []
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * TAU
+      const leg = legGeo.clone().toNonIndexed()
+      leg.rotateX(Math.cos(a) * 0.25)
+      leg.rotateZ(-Math.sin(a) * 0.25)
+      leg.translate(Math.sin(a) * 0.28, 0.55, Math.cos(a) * 0.28)
+      legParts.push(leg)
+    }
+    const bowl = bowlGeo.clone().toNonIndexed()
+    bowl.translate(0, 1.05, 0)
+    legParts.push(bowl)
+    for (const lp of legParts) lp.deleteAttribute('uv')
+    const standGeo = mergeGeometries(legParts)!
+    const stands = new THREE.InstancedMesh(standGeo, mats.iron, spots.length)
+    stands.castShadow = true
+    stands.receiveShadow = true
+    const o = new THREE.Object3D()
+    spots.forEach((sp, i) => {
+      o.position.set(sp.x, 0, sp.z)
+      o.updateMatrix()
+      stands.setMatrixAt(i, o.matrix)
+    })
+    g.add(stands)
     spots.forEach((sp, i) => {
       const b = new THREE.Group()
       b.position.set(sp.x, 0, sp.z)
-      for (let k = 0; k < 3; k++) {
-        const a = (k / 3) * TAU
-        const leg = new THREE.Mesh(legGeo, mats.iron)
-        leg.position.set(Math.sin(a) * 0.28, 0.55, Math.cos(a) * 0.28)
-        leg.rotation.set(Math.cos(a) * 0.25, 0, -Math.sin(a) * 0.25)
-        leg.castShadow = true
-        b.add(leg)
-      }
-      const bowl = new THREE.Mesh(bowlGeo, mats.iron)
-      bowl.position.y = 1.05
-      bowl.castShadow = true
-      b.add(bowl)
       const coal = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 6), coalMat.clone())
       coal.scale.set(1, 0.3, 1)
       coal.position.y = 1.3
@@ -447,7 +473,7 @@ function Grass({ quality }: { quality: Quality }) {
       const z = -105 + r() * 185
       const sd = stoneSDF(x, z)
       const clump = Math.sin(x * 0.21) * Math.sin(z * 0.17) + Math.sin(x * 0.07 + z * 0.05)
-      if (sd < 0.6 + clump * 0.4 && !(sd < 0 && r() < 0.015)) continue
+      if (sd < 0.6 + clump * 0.4) continue
       if (r() > 0.35 + clump * 0.35) continue
       let blocked = false
       for (const ob of CIRCLES) {

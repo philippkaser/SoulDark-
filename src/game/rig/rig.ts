@@ -54,7 +54,8 @@ const _qH = new THREE.Quaternion()
 const _ax = new THREE.Vector3(1, 0, 0)
 
 function group(name: string, parent: THREE.Object3D, x = 0, y = 0, z = 0) {
-  const g = new THREE.Group()
+  // joints are Bones so the whole body can be drawn as a few skinned meshes
+  const g = new THREE.Bone()
   g.name = name
   g.position.set(x, y, z)
   parent.add(g)
@@ -65,25 +66,27 @@ function group(name: string, parent: THREE.Object3D, x = 0, y = 0, z = 0) {
 export class Rig {
   readonly dims: RigDims
   readonly root = new THREE.Group()
-  readonly pivot: THREE.Group
-  readonly hips: THREE.Group
-  readonly legs: THREE.Group
-  readonly spine: THREE.Group
-  readonly chest: THREE.Group
-  readonly neck: THREE.Group
-  readonly head: THREE.Group
-  readonly shoulderL: THREE.Group
-  readonly elbowL: THREE.Group
-  readonly handL: THREE.Group
-  readonly shoulderR: THREE.Group
-  readonly elbowR: THREE.Group
-  readonly handR: THREE.Group
-  readonly thighL: THREE.Group
-  readonly kneeL: THREE.Group
-  readonly footL: THREE.Group
-  readonly thighR: THREE.Group
-  readonly kneeR: THREE.Group
-  readonly footR: THREE.Group
+  readonly pivot: THREE.Bone
+  readonly hips: THREE.Bone
+  readonly legs: THREE.Bone
+  readonly spine: THREE.Bone
+  readonly chest: THREE.Bone
+  readonly neck: THREE.Bone
+  readonly head: THREE.Bone
+  readonly shoulderL: THREE.Bone
+  readonly elbowL: THREE.Bone
+  readonly handL: THREE.Bone
+  readonly shoulderR: THREE.Bone
+  readonly elbowR: THREE.Bone
+  readonly handR: THREE.Bone
+  readonly thighL: THREE.Bone
+  readonly kneeL: THREE.Bone
+  readonly footL: THREE.Bone
+  readonly thighR: THREE.Bone
+  readonly kneeR: THREE.Bone
+  readonly footR: THREE.Bone
+  /** Every joint, in a stable order (skin indices). */
+  readonly bones: THREE.Bone[] = []
 
   constructor(dims: RigDims = HUMAN_DIMS) {
     this.dims = dims
@@ -107,6 +110,9 @@ export class Rig {
     this.shoulderR = group('shoulderR', this.chest, -d.shoulderX, d.shoulderY, 0)
     this.elbowR = group('elbowR', this.shoulderR, 0, -d.upper, 0)
     this.handR = group('handR', this.elbowR, 0, -d.fore, 0)
+    this.root.traverse((o) => {
+      if ((o as THREE.Bone).isBone) this.bones.push(o as THREE.Bone)
+    })
   }
 
   apply(p: Pose) {

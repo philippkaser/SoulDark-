@@ -47,7 +47,7 @@ export function PostFX({ quality, sun }: { quality: Quality; sun: THREE.Mesh | n
     <SMAA key="smaa" />,
   )
   return (
-    <EffectComposer multisampling={0} stencilBuffer={false}>
+    <EffectComposer multisampling={0} stencilBuffer={false} autoClear={false}>
       {effects}
     </EffectComposer>
   )

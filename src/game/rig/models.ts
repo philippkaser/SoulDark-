@@ -126,40 +126,63 @@ function heaterShape(w: number, h: number) {
   return s
 }
 
-/** Merge each joint's direct mesh children by material to cut draw calls. */
-function mergeStatic(root: THREE.Object3D) {
-  const joints: THREE.Object3D[] = []
+/**
+ * Collapse the rigidly-attached body parts into one SkinnedMesh per material.
+ * Each vertex is bound with full weight to the joint its part hung from, so a
+ * whole character costs a handful of draw calls instead of dozens.
+ */
+function mergeStatic(rig: Rig) {
+  const root = rig.root
+  const saved = root.matrix.clone()
+  const savedScale = root.scale.clone()
+  root.scale.set(1, 1, 1)
+  root.position.set(0, 0, 0)
+  root.rotation.set(0, 0, 0)
+  root.updateMatrixWorld(true)
+  const boneIndex = new Map<THREE.Object3D, number>()
+  rig.bones.forEach((b, i) => boneIndex.set(b, i))
+  const byMat = new Map<THREE.Material, Array<{ mesh: THREE.Mesh; bone: number }>>()
   root.traverse((o) => {
-    if (!(o as THREE.Mesh).isMesh) joints.push(o)
+    const m = o as THREE.Mesh
+    if (!m.isMesh || m.userData.keep || !(o.parent as THREE.Bone)?.isBone) return
+    const bone = boneIndex.get(o.parent!)
+    if (bone === undefined) return
+    const mat = m.material as THREE.Material
+    if (!byMat.has(mat)) byMat.set(mat, [])
+    byMat.get(mat)!.push({ mesh: m, bone })
   })
-  for (const j of joints) {
-    const byMat = new Map<THREE.Material, THREE.Mesh[]>()
-    for (const c of j.children) {
-      const m = c as THREE.Mesh
-      if (!m.isMesh || m.userData.keep || c.children.length) continue
-      const mat = m.material as THREE.Material
-      if (!byMat.has(mat)) byMat.set(mat, [])
-      byMat.get(mat)!.push(m)
-    }
-    for (const [mat, meshes] of byMat) {
-      if (meshes.length < 2) continue
-      const geos = meshes.map((m) => {
-        m.updateMatrix()
-        let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()
-        g = g.applyMatrix4(m.matrix)
-        for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name)
-        if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2))
-        return g
-      })
-      const merged = mergeGeometries(geos, false)
-      if (!merged) continue
-      for (const m of meshes) j.remove(m)
-      const mm = new THREE.Mesh(merged, mat)
-      mm.castShadow = true
-      mm.receiveShadow = true
-      j.add(mm)
-    }
+  const skeleton = new THREE.Skeleton(rig.bones)
+  for (const [mat, parts] of byMat) {
+    const geos = parts.map(({ mesh, bone }) => {
+      let g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
+      g.applyMatrix4(mesh.matrixWorld)
+      for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name)
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2))
+      const n = g.attributes.position.count
+      const si = new Uint16Array(n * 4)
+      const sw = new Float32Array(n * 4)
+      for (let i = 0; i < n; i++) {
+        si[i * 4] = bone
+        sw[i * 4] = 1
+      }
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4))
+      g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4))
+      return g
+    })
+    const merged = mergeGeometries(geos, false)
+    if (!merged) continue
+    for (const { mesh } of parts) mesh.removeFromParent()
+    const sm = new THREE.SkinnedMesh(merged, mat)
+    sm.castShadow = true
+    sm.receiveShadow = true
+    sm.bind(skeleton, new THREE.Matrix4())
+    // generous bounds in rig space (covers rolls, leaps and outstretched swords)
+    sm.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 2.6)
+    root.add(sm)
   }
+  root.matrix.copy(saved)
+  root.scale.copy(savedScale)
+  root.updateMatrixWorld(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +303,6 @@ export function buildKnight(o: KnightOpts): CharacterModel {
   add(H, new THREE.BoxGeometry(0.018, 0.19, 0.035), steel, [0, 0.085, 0.112])
   const helmR = o.great ? 0.122 : 0.114
   const slit = add(H, new THREE.CylinderGeometry(helmR + 0.002, helmR + 0.002, 0.022, 18, 1, true, -0.85, 1.7), visor, [0, 0.118, 0.006])
-  slit.userData.keep = true
   slit.castShadow = false
   add(H, new THREE.TorusGeometry(0.116, 0.008, 6, 26), trim, [0, 0.163, 0], [Math.PI / 2, 0, 0], [1, 1.05, 1])
   for (let i = 0; i < 3; i++) {
@@ -369,13 +391,13 @@ export function buildKnight(o: KnightOpts): CharacterModel {
     const rune = standard({ color: '#1a0a04', emissive: '#ff6a20', emissiveIntensity: 3, rim: 0 })
     glowMats.push(rune)
     mats.push(rune)
-    const r = add(rig.handR, new THREE.BoxGeometry(0.022, 0.012, len * 0.7), rune, [0, 0, 0.1 + len * 0.4])
-    r.userData.keep = true
+    add(rig.handR, new THREE.BoxGeometry(0.022, 0.012, len * 0.7), rune, [0, 0, 0.1 + len * 0.4])
     swordBase.position.set(0, 0, 0.12)
     swordTip.position.set(0, 0, 0.1 + len)
     bladeFire = makeBladeFire(len)
     bladeFire.position.set(0, 0, 0.1 + len * 0.5)
     bladeFire.visible = false
+    bladeFire.userData.keep = true
     rig.handR.add(bladeFire)
   } else {
     const len = 0.95
@@ -409,8 +431,7 @@ export function buildKnight(o: KnightOpts): CharacterModel {
       paint.emissive = new THREE.Color(tint)
       paint.emissiveIntensity = 0.3
     }
-    const face = add(rig.handL, faceGeo, paint, [0, 0.02, 0.035 + 0.03 + 0.0135])
-    face.userData.keep = true
+    add(rig.handL, faceGeo, paint, [0, 0.02, 0.035 + 0.03 + 0.0135])
     // boss on the face
     add(rig.handL, new THREE.SphereGeometry(0.045, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), trim, [0, 0.06, 0.08], [Math.PI / 2, 0, 0], [1, 0.5, 1])
   }
@@ -431,7 +452,7 @@ export function buildKnight(o: KnightOpts): CharacterModel {
     rig.handR.add(flask)
   }
 
-  mergeStatic(rig.root)
+  mergeStatic(rig)
 
   // --- cape
   const container = new THREE.Group()
@@ -586,16 +607,27 @@ export function buildHollow(variant: number): CharacterModel {
   rig.hips.add(flapBack)
   add(flapBack, new THREE.PlaneGeometry(0.22, 0.46), rag, [0, -0.22, 0])
   add(rig.chest, new THREE.CylinderGeometry(0.045, 0.06, 0.12, 10), skin, [0, 0.24, 0])
+  // tattered shawl over the shoulders gives the hollows their hunched silhouette
+  add(rig.chest, new THREE.CylinderGeometry(0.12, 0.29, 0.3, 14, 2, true), rag, [0, 0.1, -0.01], [0.12, 0, 0], [1, 1, 0.82])
+  if (variant % 3 === 1) {
+    const plate = [
+      [0.15, -0.16],
+      [0.17, -0.04],
+      [0.175, 0.08],
+      [0.15, 0.16],
+      [0.1, 0.2],
+    ].map(([r, y]) => new THREE.Vector2(r, y))
+    add(rig.chest, new THREE.LatheGeometry(plate, 14, -Math.PI / 2, Math.PI), rust, [0, 0, 0.005], [0, 0, 0], [1.02, 1, 0.8])
+  }
+  add(rig.hips, new THREE.BoxGeometry(0.07, 0.09, 0.05), leather, [0.12, -0.04, 0.05], [0, 0.4, 0])
 
   // skull
   const H = rig.head
   add(H, new THREE.SphereGeometry(0.098, 18, 14), skin, [0, 0.1, 0.01], [0, 0, 0], [0.86, 1.05, 0.98])
   add(H, new THREE.BoxGeometry(0.1, 0.05, 0.08), skin, [0, 0.025, 0.04])
   for (const s of [1, -1]) {
-    const so = add(H, new THREE.SphereGeometry(0.024, 10, 8), socket, [0.034 * s, 0.11, 0.077])
-    so.userData.keep = true
-    const e = add(H, new THREE.SphereGeometry(0.008, 8, 6), eyeMat, [0.034 * s, 0.11, 0.094])
-    e.userData.keep = true
+    add(H, new THREE.SphereGeometry(0.024, 10, 8), socket, [0.034 * s, 0.11, 0.077])
+    add(H, new THREE.SphereGeometry(0.008, 8, 6), eyeMat, [0.034 * s, 0.11, 0.094])
   }
   if (variant % 2 === 0) {
     add(H, new THREE.ConeGeometry(0.11, 0.1, 14, 1, true), rust, [0, 0.2, 0], [0, 0, 0], [1, 1, 1.05])
@@ -656,7 +688,7 @@ export function buildHollow(variant: number): CharacterModel {
   }
   rig.handR.add(swordBase, swordTip)
 
-  mergeStatic(rig.root)
+  mergeStatic(rig)
   const container = new THREE.Group()
   container.add(rig.root)
 

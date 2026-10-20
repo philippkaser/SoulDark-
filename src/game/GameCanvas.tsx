@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { BONFIRE } from '../../shared/level'
 import { audio } from '../audio/audio'
@@ -44,6 +44,27 @@ function SessionLayer({ session }: { session: GameSession }) {
     }
   }, [gl, session])
 
+  // one-shot performance check: step the preset down if this machine struggles
+  const perf = useRef({ t: 0, frames: 0, done: new URLSearchParams(location.search).has('q') })
+  useFrame((_, delta) => {
+    const pc = perf.current
+    if (!pc.done) {
+      pc.t += delta
+      if (pc.t > 4) pc.frames++
+      if (pc.t > 10) {
+        pc.done = true
+        const fps = pc.frames / (pc.t - 4)
+        const ui = useUI.getState()
+        const q = ui.save.settings.quality
+        const next = q === 'high' && fps < 42 ? 'medium' : q === 'medium' && fps < 30 ? 'low' : null
+        if (next) {
+          ui.updateSettings({ quality: next })
+          ui.pushChat({ name: '', system: true, text: `Graphics lowered to ${next} (${Math.round(fps)} fps). Change it any time in the menu.` })
+        }
+      }
+    }
+  })
+
   useFrame((_, delta) => {
     const dt = Math.min(delta, 1 / 20)
     const ui = useUI.getState()
@@ -87,7 +108,7 @@ export function GameCanvas({ session, quality }: { session: GameSession | null; 
       camera={{ fov: 55, near: 0.1, far: 1600, position: [0, 3, 52] }}
       onCreated={({ gl, camera }) => {
         gl.shadowMap.type = THREE.PCFShadowMap
-        if (import.meta.env.DEV) Object.assign(window, { __gl: gl })
+        if (import.meta.env.DEV) Object.assign(window, { __gl: gl, __THREE: THREE })
         camera.lookAt(SUN_DIR.clone().multiplyScalar(100))
       }}
       style={{ position: 'fixed', inset: 0 }}

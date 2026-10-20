@@ -421,11 +421,11 @@ export function blockStoneTexture(): THREE.Texture {
         const bevel = Math.min(1, Math.max(0, (edge - 0.004) / 0.01))
         const id = tint[(row * 31 + bi * 7) & 255]
         const h = mortar ? 0.1 : 0.55 + bevel * 0.35 + (n[i] - 0.5) * 0.25 + (fine[i] - 0.5) * 0.08
-        let c = mortar ? 0.42 : 0.62 + (id - 0.5) * 0.22 + (n[i] - 0.5) * 0.35 + (fine[i] - 0.5) * 0.12
+        let c = mortar ? 0.36 : 0.6 + (id - 0.5) * 0.18 + (n[i] - 0.5) * 0.38 + (fine[i] - 0.5) * 0.12
         c *= 0.85 + bevel * 0.15
         data[i * 4] = Math.max(0, Math.min(255, c * 255 * 1.0))
-        data[i * 4 + 1] = Math.max(0, Math.min(255, c * 255 * 0.97))
-        data[i * 4 + 2] = Math.max(0, Math.min(255, c * 255 * 0.92))
+        data[i * 4 + 1] = Math.max(0, Math.min(255, c * 255 * 0.985))
+        data[i * 4 + 2] = Math.max(0, Math.min(255, c * 255 * 0.96))
         data[i * 4 + 3] = Math.max(0, Math.min(255, h * 255))
       }
     }

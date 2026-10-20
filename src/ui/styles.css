@@ -670,6 +670,7 @@ button {
 }
 
 .menu .item {
+  outline: none;
   text-align: left;
   padding: 9px 14px;
   background: transparent;
@@ -680,6 +681,7 @@ button {
 }
 
 .menu .item:hover,
+.menu .item:focus,
 .menu .item.on {
   background: linear-gradient(90deg, rgba(201, 164, 90, 0.18), rgba(201, 164, 90, 0));
   border-left-color: var(--gold);
