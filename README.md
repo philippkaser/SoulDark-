@@ -1,38 +1,29 @@
-# SOULDARK
+# SKYCLEAVER
 
-*Fear not the dark.*
+*Parry the apocalypse.*
 
-A souls-like action game for the browser, built with **Vite**, **Bun**, **React Three Fiber** and **drei**, and playable in co-op.
+A browser action game about being absurdly overpowered, built with **Vite**, **Bun**, **React Three Fiber** and **drei**.
 
-The fire fades and an eclipse hangs over a ruined cathedral. Kindle the bonfire, cut your way through the graveyard of the hollowed, pass the Fallen Knight who guards the white fog, and face **Malgrave, the Ashen Warden**. You can do it alone, or with friends as golden phantoms.
+An empire of iron sends everything it has against one swordsman: a legion of thousands, arrowstorms, artillery, an airship fleet, a mountain-sized colossus, an orbital sun-cannon, its nuclear arsenal, and finally the eclipse itself. You parry the nukes back to their silos, catch orbital beams on your blade and aim them, cut the falling moon in half, and end the game by cleaving the sky open to let the dawn through.
 
-Everything is generated procedurally at runtime: the models, animations, textures, sky, architecture, sound effects and music. The project ships no image, model or audio files.
+Everything is generated procedurally at runtime: the models, animations, textures, sky, mushroom clouds, sound effects and music. The project ships no image, model or audio files.
 
 ## Quick start
 
 ```bash
 bun install
-bun run dev        # game server on :3001 + Vite on :5173
+bun run dev        # http://localhost:5173
 ```
 
-Open <http://localhost:5173>, name your knight and **Enter the world**. Send a friend the same address and world name to play together.
-
-Production build, with the client and WebSocket server on one port:
-
-```bash
-bun run build
-bun run start      # http://localhost:3001   (PORT=xxxx to change)
-```
-
-If no server is reachable (for example on static hosting), the game runs the same world simulation inside the browser and you play offline.
+Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anything on demand.
 
 | Command | What it does |
 | --- | --- |
-| `bun run dev` | Bun game server (watch mode) and Vite dev server |
-| `bun run build` | Production client build into `dist/` |
-| `bun run start` | Serves `dist/` and the `/ws` game socket from one Bun process |
+| `bun run dev` | Vite dev server |
+| `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
+| `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests of the shared world simulation |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -40,79 +31,88 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 
 | Keyboard / mouse | Gamepad | Action |
 | --- | --- | --- |
-| WASD / mouse | Left / right stick | Move / camera |
-| Shift (hold) | B (hold) | Sprint |
-| Space | B (tap) | Roll (backstep with no direction) |
-| Left click | RB | Light attack, chains a 3-hit combo |
-| Right click | RT | Heavy attack (hyper armor) |
-| F | LB / LT | Parry with the shield; then attack to **riposte** |
-| Q / middle click | R3 | Lock on (mouse wheel or a stick flick switches target) |
-| R | X | Drink from the Estus Flask |
-| E | A | Interact: rest at the bonfire, traverse fog, read messages, touch bloodstains |
-| G | Y | Gestures (Praise the Sun!) |
-| T | Back | Write a message on the ground |
-| Enter | | Chat |
-| Esc | Start | Menu |
+| WASD / mouse | Left / right stick | Move / aim |
+| Left click | RB / X | Slash: every swing throws a flying crescent |
+| Right click | LB / LT | **Parry**. Hold to guard, or to catch a beam on the blade |
+| E (hold) | RT | **Heaven Splitter**: charge, release, cut a canyon to the horizon |
+| Shift | B | Flash-step (untouchable, cuts through anything in the way) |
+| Space | A | Leap. Space again in the air: meteor dive |
+| Q | Y | **Judgment**, when Divinity is full: time stops, the hero cuts everything in sight, time resumes |
+| Esc | Start | Pause |
 | H | | Toggle the controls overlay |
+| 1 – 9, 0 | | Sandbox summons, immortality |
+
+## How it plays
+
+**Parry everything.** Every threat in the game asks the hero what happens when it arrives. Press parry in the window and it goes back where it came from, aimed at whatever is under your crosshair. With nothing there, it goes back to its sender. Bigger threats give bigger windows and bigger spectacle. A perfect parry freezes the frame, flashes anime impact frames and slows the world while you keep moving. Each perfect parry re-arms the window, so a whole missile salvo goes home in one chain. Hold guard instead and you block, but you get pushed back and take chip damage.
+
+**The trials**
+
+1. **The Legion.** Thousands of soldiers march in formation. Mow down 450.
+2. **Arrowstorm.** Archer volleys darken the sky. A parry in the window deflects every arrow around you.
+3. **Iron Thunder.** Artillery on the ridge. Parry the shells back into the cannons.
+4. **The Skyfleet.** War airships fire missile salvos. Send the missiles home, or cut the ships in half.
+5. **The Colossus.** A 36 m giant with a sword to match. Parry its slam and it staggers; a Heaven Splitter cuts it in two, and the halves topple and crash.
+6. **Sol Lance.** An orbital station fires a sun-beam. Parry it back up its own path, or hold guard to catch it and sweep it across the army.
+7. **Doctrine of Annihilation.** The citadel launches nukes. Return a warhead to its silo for a mushroom cloud on the horizon and a shockwave that rolls back across the whole plain. Or cut it in half mid-air.
+8. **The Eclipse.** Meteors, an eye that fires beams, and the moon dropped on your head: parry it home or cut it in half. When the eclipse falters, press Q.
+
+Kills, parries and feats fill a style meter that climbs from **D**readful through **C**ataclysmic, **B**iblical, **A**pocalyptic, **S**overeign and **SS** Supreme to **SSS · Skycleaver**. Higher ranks multiply your score and intensify the music.
+
+**Sandbox.** `1` Legion · `2` Arrowstorm · `3` Artillery · `4` Skyfleet · `5` Colossus · `6` Sol Lance · `7` Nuke · `8` Meteor shower · `9` The Moon · `0` immortality and full Divinity.
 
 ## What's in it
 
-**Combat**
-- Input buffering, combo windows, roll-cancel windows and stamina gating
-- Roll and backstep invincibility frames; heavy attacks have hyper armor
-- Parries open enemies to visceral ripostes. Break the Warden's poise to riposte him too
-- Swept-blade hit detection: the actual sword arc is tested against enemy capsules, so a hit lands when the blade connects
-- Hitstop, trauma-based camera shake, sparks, blood, sword trails and dissolve-to-ash deaths
-- Enemies telegraph their attacks with wind-ups, track you during the wind-up and then commit, so rolling through attacks is a skill
-- Estus Flask, souls, bloodstains to recover your lost souls, and leveling at the bonfire (Vigor / Endurance / Strength)
+**Combat feel**
+- Two clocks: hitstop freezes everything, *divine time* slows the world but not the hero, and Judgment stops world time completely
+- A custom post-processing pass for flash frames, inverted and threshold impact frames, radial zoom punches, speed lines, chromatic kicks, screen-space shockwave distortion, desaturation and a damage vignette
+- Trauma camera shake, FOV kicks and scripted cinematic shots (the nuke return, the finale)
+- Afterimages from frozen skeleton copies, sword trails, a verlet-cloth coat and scarf
 
-**Enemies**
-- *Hollow Soldiers*, who kneel hollowed until you come near, then rise, circle you and hack
-- The *Fallen Knight*: shield, combos, a lunging thrust and a shield bash
-- *Malgrave, the Ashen Warden*, a 4.6 m boss with cleaves, sweeps, a charging thrust, a leaping slam and a stomp. At half health he roars, his blade ignites, and he adds a fire nova and a three-hit whirlwind. Braziers light up around the arena, the fog seals behind you, and a generative score plays.
+**Destruction**
+- A real-time slicer: meshes are cloned into two halves clipped by the cut plane, the cut faces glow molten, and the halves topple, slide or tumble, crash and dissolve. Spires, cannons, airships, the Colossus (its posed skin is baked to static geometry first), the Sol Lance station and the moon can all be cut
+- A scorch map: craters, fissures and beam trails burn into the ground and cool over time
+- An instanced horde of up to 2,200 soldiers in one draw call, animated in the vertex shader, flung, sliced and vaporized
+- Procedural mushroom clouds with a rolling toroidal cap, stem, base surge and condensation ring; shockwaves that travel at a visible speed and flatten everything in their band
 
-**Multiplayer (Bun WebSockets)**
-- Every player in the same world sees the others as glowing golden phantoms, with name labels and full animations
-- Enemies, the boss fight and the fog gate are simulated on the server, so everyone fights the same enemies; boss HP scales with the number of players
-- Each client is authoritative over its own movement and the damage it takes, the same model the Souls games use. That keeps dodging fair under latency. The server validates hits and owns enemy health.
-- *Orange soapstone messages*: compose them from templates, engrave them on the ground, read and appraise others' messages (appraising heals the author). Messages persist on disk per world.
-- *Bloodstains*: when someone dies, a pool of red appears in everyone else's world. Touch it to watch a red ghost replay their last moments.
-- Text chat, join/leave notices, and separate worlds by name
-
-**Visuals (all procedural)**
-- An eclipse with a burning corona, god rays, drifting clouds and stars
-- A procedural ground shader: radial flagstones at the shrine and arena, running-bond slabs on the road, cobbles through the graveyard, eroding into dirt and dead grass, with mossy grout, cracks and puddles
-- Triplanar-textured gothic ruins: fluted and broken columns, pointed-arch arcades, the gate towers, walls with lancet windows, a weathered knight statue, dead trees, cliffs and a distant cathedral with glowing windows
-- Wind-blown grass that parts around you, ground mist, embers and falling ash
-- Characters built on a procedural IK rig: armor with rim light, painted heater shields, verlet-cloth capes and tabards
-- Post-processing: N8AO ambient occlusion, bloom, AgX tone mapping, grading, chromatic aberration, vignette, film grain, SMAA
+**World**
+- A scorched plain under an eclipse: domain-warped basalt cracks with lava seams, standing stone spires, the Dominion Citadel with searchlights and silos, mountain ridges, embers and ash
+- A sky shader with the eclipse corona, lightning, a crack that splits the sky open and a dawn that replaces the eclipse with a true sun
 
 **Audio (all procedural WebAudio)**
-- Sword whooshes, flesh and armor hits, parry rings, footsteps with chain-mail jingle, roars, slams, explosions
-- Wind and bonfire crackle ambience, distant bells on the title screen
-- A generative boss theme (choir pads, string ostinato, war drums) that intensifies in phase two
+- Synthesized slashes, parry rings by tier, cannons, missiles, sirens, nuclear flashes with distance-delayed shock, beams, titan footsteps and roars
+- A generative score in D minor whose layers rise with the wave and your style rank
 
 ## Architecture
 
 ```
-shared/           deterministic game simulation used by server AND browser
-  level.ts        zones, obstacles, enemy spawns
-  collision.ts    union-of-zones walkable area, circle/box push-out, camera ray test
-  combat.ts       player actions, enemy attacks (timings, hit arcs, AoEs), stats
-  room.ts         the world: enemy AI state machines, boss flow, messages, bloodstains
-  protocol.ts     network message types and message templates
-server/index.ts   Bun.serve: WebSocket rooms at /ws, static dist/, /api/status
 src/
-  net/            NetClient (WebSocket or in-browser Room) + snapshot sync
+  engine/           reusable pieces
+    rig/            skeleton + IK, pose clips, procedural models, cloth, trails
+    gfx/            patched materials (molten cut faces), noise, textures, PowerFX post effect
+    geom.ts         attack shapes (sphere, capsule, sector, slab, ring) and their tests
+    particles.ts    pooled additive points and lit, depth-sorted billboard smoke
   game/
-    session.ts    per-frame orchestration: input, player, enemies, phantoms, fx, camera
-    player/       player controller (actions, buffering, hit detection, damage)
-    rig/          skeleton + two-bone IK, pose clips, models, cloth, trails
-    env/          sky, ground shader, architecture, bonfire, grass, atmosphere
-    fx/           particle and shockwave system
-  ui/             title screen, HUD, menus
-  audio/          procedural sound and music
-tests/            bun tests for the simulation
+    Game.ts         systems, damage routing, threats, reflect targeting, the frame loop
+    create.ts       wires every system and the sandbox spawn table
+    time.ts         hitstop, divine time, slowmo, time stop
+    camera.ts       follow camera, trauma, cinematic shots
+    post.ts         drives the PowerFX uniforms
+    player/         hero model, clips, controller, flying slashes
+    enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
+                    artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse
+    fx/             explosions, debris, afterimages, mushroom clouds, slicer
+    world/          layout, sky, ground, scorch map, spires and mountains
+    waves.ts        the eight trials
+    director.ts     title attract mode, campaign/sandbox switching
+    score.ts        style ranks, combo, feed, tally
+  ui/               title, HUD (canvas overlay + DOM), menus, death and results screens
+  audio/            procedural sound effects and generative music
+  input/            keyboard, mouse (pointer lock) and gamepad
+tests/              bun tests
 ```
 
-The server runs enemies at 30 Hz and broadcasts snapshots at 20 Hz. Clients render remote entities 110 ms in the past and interpolate between snapshots. Enemy animations are driven by server timestamps, so a swing looks the same on every screen and matches its hitbox.
+## Development hooks
+
+- `?debug=poses&clip=slash2&t=0,0.1,0.2` renders the hero's animation clips frame by frame.
+- In dev builds, `window.__sky` exposes `{ game, input, ui, THREE, step }`. `step(seconds)` advances the simulation deterministically at 60 Hz, and `input.tap('Mouse2')` injects a press. That is enough to script a perfect nuke parry from a test.
