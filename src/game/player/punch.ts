@@ -27,6 +27,8 @@ export const WAVE_HALF = (20 * Math.PI) / 180
 export const WAVE_R0 = 8
 /** The wave follows the aim upward, never down, at most this steep (rad). */
 export const MAX_TILT = 0.6
+/** A falling moon within this heading of the aim pulls the wave up onto it. */
+export const MOON_ASSIST = (30 * Math.PI) / 180
 /** Aim within this heading of the eclipse to hit it. */
 export const ECLIPSE_AIM = (15 * Math.PI) / 180
 const WAVE_TAN = Math.tan(WAVE_HALF)
@@ -52,13 +54,17 @@ const _fist = new THREE.Vector3()
 const UP = new THREE.Vector3(0, 1, 0)
 const DUST: readonly [number, number, number] = [0.34, 0.28, 0.24]
 
-/** The wave's heading: the aim's, tilted up with the aim (never down), at most MAX_TILT. */
-export function waveDir(aim: THREE.Vector3, out: THREE.Vector3) {
+/**
+ * The wave's heading: the aim's, tilted up with the aim (never down), at most
+ * MAX_TILT. The follow camera cannot look up far, so upward aim counts for
+ * more (`gain`); a direction toward a target passes gain 1.
+ */
+export function waveDir(aim: THREE.Vector3, out: THREE.Vector3, gain = 1.8) {
   const l = Math.hypot(aim.x, aim.z)
   const fx = l > 1e-5 ? aim.x / l : 0
   const fz = l > 1e-5 ? aim.z / l : -1
   // the default camera looks a little down: that still punches level
-  const tilt = clamp(Math.atan2(aim.y, Math.max(l, 1e-5)) - 0.04, 0, MAX_TILT)
+  const tilt = clamp((Math.atan2(aim.y, Math.max(l, 1e-5)) - 0.04) * gain, 0, MAX_TILT)
   return out.set(fx * Math.cos(tilt), Math.sin(tilt), fz * Math.cos(tilt))
 }
 
@@ -77,9 +83,14 @@ export function waveReach(origin: THREE.Vector3, dir: THREE.Vector3, p: THREE.Ve
   return perp <= waveRadius(along) + r * WAVE_SEC ? Math.max(0, along - r) : -1
 }
 
+/** Heading difference (rad) between two directions, ignoring height. */
+export function headingGap(a: THREE.Vector3, b: THREE.Vector3) {
+  return Math.abs(angleDiff(Math.atan2(a.x, a.z), Math.atan2(b.x, b.z)))
+}
+
 /** Heading difference (rad) between a direction and the eclipse, ignoring height. */
 export function eclipseHeading(dir: THREE.Vector3) {
-  return Math.abs(angleDiff(Math.atan2(dir.x, dir.z), Math.atan2(SUN_DIR.x, SUN_DIR.z)))
+  return headingGap(dir, SUN_DIR)
 }
 
 /** Spacing of the ring corridor: tight near the fist, sparse toward the horizon. */
@@ -364,9 +375,15 @@ export class Punch implements System {
     const aim = this.aim(new THREE.Vector3())
     const w = this.waves.find((x) => !x.on) ?? this.waves.reduce((a, b) => (a.age > b.age ? a : b))
     waveDir(aim, w.dir)
+    this.fistAt(w.dir, w.origin)
+    // a falling moon roughly ahead draws the fist up to it
+    const moon = g.forces?.eclipse.moonTarget
+    if (moon && headingGap(_v.subVectors(moon, w.origin), w.dir) < MOON_ASSIST) {
+      waveDir(_v, w.dir, 1)
+      this.fistAt(w.dir, w.origin)
+    }
     w.flat.set(w.dir.x, 0, w.dir.z).normalize()
     sideOf(w.flat, w.side)
-    this.fistAt(w.dir, w.origin)
     w.on = true
     w.d = 0
     w.age = 0

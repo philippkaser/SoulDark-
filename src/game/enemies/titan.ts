@@ -215,8 +215,9 @@ export class Titans implements System {
     const punched = hit?.kind === 'punch'
     useUI.getState().stamp(punched ? 'COLOSSUS, PUNCHED THROUGH' : 'COLOSSUS CLEAVED', 'divine')
     g.time.slowmo(1.6, 0.35)
-    g.post.flashTo(0.4, '#fff0d0', 2)
-    g.post.impactFrames([2, 1, 2, 0], 1 / 16)
+    // the punch has already lit the screen up: no second wash of white
+    g.post.flashTo(punched ? 0.1 : 0.4, '#fff0d0', 2)
+    g.post.impactFrames(punched ? [2, 0] : [2, 1, 2, 0], 1 / 16)
     const plane = punched && hit?.dir ? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(hit.dir.z, 0.12, -hit.dir.x).normalize(), _v.set(t.x, 18, t.z)) : hit?.plane ?? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(Math.cos(t.yaw), 0.15, -Math.sin(t.yaw)).normalize(), _v.set(t.x, 18, t.z))
     // freeze the pose into stone and cut it apart
     t.model.rig.root.updateMatrixWorld(true)

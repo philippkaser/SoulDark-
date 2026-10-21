@@ -150,6 +150,11 @@ export class Eclipse implements System {
     useUI.getState().showBanner({ kind: 'boss', title: 'THE ECLIPSE', sub: 'The thing behind the sun opens its eye' })
   }
 
+  /** The falling moon, while it can still be struck (the Serious Punch homes in on it). */
+  get moonTarget(): THREE.Vector3 | null {
+    return this.moonActive && !this.moonReturning ? this.moon.position : null
+  }
+
   /** Sandbox: drop the moon right now. */
   dropMoon() {
     if (this.moonActive) return
