@@ -75,6 +75,7 @@ void main() {
   // canyon along uPartDir and a ring blasted out around the hero
   float pClear = 0.0;
   float pWall = 0.0;
+  float pComp = 0.0;
   float pRoll = 0.0;
   vec2 pShift = vec2(0.0);
   if (uPartOn > 0.0 && h > -0.05) {
@@ -87,31 +88,41 @@ void main() {
     float lim = along >= 0.0 ? uPart.x : uPart.y;
     float tip = smoothstep(lim, lim - 1.0 - lim * 0.2, abs(along));
     float rag = n2(vec2(along * 2.1, side > 0.0 ? 1.0 : 9.0));
-    float w = uPart.z * tip * (0.8 + 0.4 * rag);
-    float inC = (1.0 - smoothstep(w * 0.5, w, a)) * step(0.001, w);
-    float wb = 0.08 + w * 0.3;
-    float bankC = exp(-(a - w) * (a - w) / (wb * wb)) * step(0.001, w);
+    float w = uPart.z * tip * (0.75 + 0.5 * rag);
+    float has = step(0.001, w);
+    float inC = (1.0 - smoothstep(w * 0.55, w, a)) * has;
+    float o = a - w;
+    float wb = 0.06 + w * 0.22;
+    float bankC = exp(-o * o / (wb * wb)) * has;
+    // the deck shoved out of the cut piles up behind the walls
+    float compC = (1.0 - smoothstep(0.0, w * 2.2 + 0.25, max(o, 0.0))) * step(-wb, o) * has;
     float r = length(q);
     float R = uPartRing.x;
-    float inR = (1.0 - smoothstep(R * 0.72, R, r)) * uPartRing.y;
-    float rb = 0.1 + R * 0.12;
-    float bankR = exp(-(r - R) * (r - R) / (rb * rb)) * uPartRing.y * step(0.01, R);
+    float hasR = uPartRing.y * step(0.01, R);
+    float inR = (1.0 - smoothstep(R * 0.7, R, r)) * hasR;
+    float oR = r - R;
+    float rb = 0.08 + R * 0.1;
+    float bankR = exp(-oR * oR / (rb * rb)) * hasR;
+    float compR = (1.0 - smoothstep(0.0, R * 0.8 + 0.3, max(oR, 0.0))) * step(-rb, oR) * hasR;
     pClear = max(inC, inR);
-    pWall = max(bankC, bankR) * (1.0 - pClear * 0.7);
-    // the deck is shoved aside: sample it from nearer the cut, squeezed against the walls
-    pShift = -perp * sign(side) * w * exp(-max(a - w, 0.0) / (w * 1.2 + 0.05));
-    pShift -= q / max(r, 1e-3) * R * exp(-max(r - R, 0.0) / (R * 0.8 + 0.05)) * uPartRing.y * 0.7;
-    // the banks roll outward
-    float rollC = fbm(vec2(along * 2.6, (a - w) * 8.0 - uPartAge * 0.9));
-    float rollR = fbm(vec2(atan(q.y, q.x) * 7.0, (r - R) * 8.0 - uPartAge * 0.9) + 5.0);
+    pWall = max(bankC, bankR) * (1.0 - pClear * 0.8);
+    pComp = max(compC, compR) * (1.0 - pClear);
+    // sample the deck from nearer the cut, so it looks squeezed against the walls
+    pShift = -perp * sign(side) * w * exp(-max(o, 0.0) / (w * 1.2 + 0.05));
+    pShift -= q / max(r, 1e-3) * R * exp(-max(oR, 0.0) / (R * 0.8 + 0.05)) * uPartRing.y * 0.7;
+    // the banks roll outward (the ring's noise runs on the unit circle: no seam)
+    float rollC = fbm(vec2(along * 2.6, o * 7.0 - uPartAge * 0.8));
+    float rollR = fbm(q / max(r, 1e-3) * 3.0 + vec2(oR * 7.0 - uPartAge * 0.8, 5.0));
     pRoll = bankR > bankC ? rollR : rollC;
-    // what was above the smoke: deep clear sky full of stars, blue at dawn, the corona's light pouring in
-    float hz = smoothstep(-0.02, 0.18, h);
-    vec3 deep = mix(vec3(0.006, 0.004, 0.02), vec3(0.06, 0.2, 0.55), uDawn);
-    col = mix(col, deep, pClear * hz * 0.8);
+    // what was above the smoke: deep clear sky full of stars, blue at dawn
+    float hz = smoothstep(-0.02, 0.16, h);
+    vec3 deep = mix(vec3(0.008, 0.005, 0.022), vec3(0.06, 0.2, 0.55), uDawn);
+    col = mix(col, deep, pClear * hz * 0.93);
     vec2 sp2 = d.xz / (abs(h) + 0.4) * 260.0;
     float st2 = step(0.992, h21(floor(sp2))) * (0.55 + 0.45 * sin(uTime * 3.0 + h21(floor(sp2) + 5.0) * 30.0));
-    col += vec3(0.8, 0.85, 1.0) * st2 * pClear * hz * (1.0 - uDawn) * 0.8;
+    col += vec3(0.8, 0.85, 1.0) * st2 * pClear * hz * (1.0 - uDawn) * 0.9;
+    // light spilling down the inside of the walls
+    col += mix(vec3(0.5, 0.17, 0.06), vec3(0.6, 0.45, 0.3), uDawn) * inC * smoothstep(0.35, 1.0, a / max(w, 1e-3)) * hz * 0.35 * uPart.w;
   }
 
   // stars (thin through the smoke)
@@ -131,7 +142,8 @@ void main() {
   float rays = fbm(vec2(theta * 6.0, uTime * 0.06)) * 0.7 + fbm(vec2(theta * 23.0, -uTime * 0.04)) * 0.5;
   vec3 corona = mix(vec3(1.0, 0.55, 0.18), vec3(1.0, 0.25, 0.08), uDoom);
   float c = 0.0;
-  if (x > 0.0) c = 7.0 * exp(-x * 110.0) + 1.6 * exp(-x * 20.0) * (0.6 + rays) + 0.4 * exp(-x * 4.0) * rays;
+  // where the punch blew the smoke away the corona's haze goes with it: a crisp ring on clear sky
+  if (x > 0.0) c = 7.0 * exp(-x * 110.0) + (1.6 * exp(-x * 20.0) * (0.6 + rays) + 0.4 * exp(-x * 4.0) * rays) * (1.0 - 0.55 * pClear);
   float rim = smoothstep(0.004, 0.0, abs(x)) * 12.0;
   vec3 ecl = corona * c + vec3(1.0, 0.85, 0.6) * rim;
   if (x < 0.0) {
@@ -167,15 +179,19 @@ void main() {
     float cl = smoothstep(0.42, 0.85, fbm(cp));
     float streak = smoothstep(0.5, 0.9, fbm(vec2(cp.x * 0.35, cp.y * 3.0) + 4.0));
     cl = max(cl, streak * 0.6) * (1.0 - pClear);
-    // the walls of the split: dense, rolling banks
-    cl = max(cl, pWall * smoothstep(0.25, 0.75, pRoll + pWall * 0.35));
+    // the split: the shoved-aside deck piled thick, and the walls as dense rolling banks
+    cl = max(cl, pComp * 0.85 * smoothstep(0.3, 0.7, fbm(cp * 1.25 + vec2(uPartAge * 0.03, 0.0)) + pComp * 0.3));
+    cl = max(cl, pWall * smoothstep(0.2, 0.65, pRoll + pWall * 0.4));
     float lit = exp(-ang * 2.6) * 1.6 + 0.06;
     vec3 cloudDark = mix(vec3(0.03, 0.012, 0.02), vec3(0.32, 0.36, 0.45), uDawn);
     vec3 cloudLit = mix(vec3(0.75, 0.22, 0.07), vec3(1.4, 0.95, 0.65), uDawn);
     vec3 cc = mix(cloudDark, cloudLit, clamp(lit * 0.6, 0.0, 1.0));
-    // lit edge-on by the light pouring through the cut
-    cc = mix(cc, cloudLit * (0.55 + 0.25 * pRoll) * (0.6 + uPart.w) * (0.45 + 0.55 * clamp(lit, 0.0, 1.0)), clamp(pWall * 1.2, 0.0, 1.0));
+    // the piled deck sits in shadow; the wall faces are lit edge-on by the light pouring through the cut
+    cc *= 1.0 - pComp * 0.5 * (1.0 - pWall);
+    cc = mix(cc, cloudLit * (0.55 + 0.35 * pRoll) * (0.6 + uPart.w) * (0.5 + 0.5 * clamp(lit, 0.0, 1.0)), clamp(pWall * 1.3, 0.0, 1.0));
     float fade = smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.6, 0.97, h));
+    // the split's banks stay visible higher up, so the cut runs on overhead
+    fade = max(fade, smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.85, 0.99, h)) * max(pWall, pComp));
     // thin the cloud deck in front of the black disc so it stays a void
     fade *= 1.0 - 0.85 * smoothstep(0.02, -0.01, x) * (1.0 - uDawn);
     col = mix(col, cc + corona * lit * 0.12 * (1.0 - uDawn), cl * fade * 0.88);
@@ -219,7 +235,7 @@ export interface PartOpts {
   heal?: number
 }
 
-const PART_DEFAULTS: Required<PartOpts> = { width: 0.5, ring: 1.9, tear: 1.5, heal: 90 }
+const PART_DEFAULTS: Required<PartOpts> = { width: 0.5, ring: 1.5, tear: 1.5, heal: 90 }
 /** How far the tear runs on the cloud plane: past the horizon (|q| = 6.25 at h = 0). */
 const PART_REACH = 9
 
