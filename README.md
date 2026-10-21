@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the punch's wave and the sky split) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -35,6 +35,7 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 | Left click | RB / X | Slash: every swing throws a flying crescent |
 | Right click | LB / LT | **Parry**. Hold to guard, or to catch a beam on the blade |
 | E (hold) | RT | **Heaven Splitter**: charge, release, cut a canyon to the horizon |
+| F (hold for Serious) | R3 | **Punch**: a jab of air that flings everything in front of you. Hold to coil a **Serious Punch** (50 Divinity) |
 | Shift | B | Flash-step (untouchable, cuts through anything in the way) |
 | Space | A | Leap. Space again in the air: meteor dive |
 | Q | Y | **Judgment**, when Divinity is full: time stops, the hero cuts everything in sight, time resumes |
@@ -57,6 +58,8 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 7. **Doctrine of Annihilation.** The citadel launches nukes. Return a warhead to its silo for a mushroom cloud on the horizon and a shockwave that rolls back across the whole plain. Or cut it in half mid-air.
 8. **The Eclipse.** Meteors, an eye that fires beams, and the moon dropped on your head: parry it home or cut it in half. When the eclipse falters, press Q.
 
+**One punch.** Tap F and the air in front of your fist goes off like a gunshot: soldiers fly, arrows and shells are swatted out of the sky. Hold it and the hero coils, the ground gives and the rocks rise; let go with 50 Divinity and the Serious Punch throws a pressure wave out to the horizon at 900 m/s. It tears a trench across the plain, vaporizes everything in a widening cone, bores straight through the mountains and splits the cloud deck overhead from horizon to horizon. It breaks a falling moon into burning pieces, punches the Colossus in two, and aimed at the eclipse during its fight, it hurts.
+
 Kills, parries and feats fill a style meter that climbs from **D**readful through **C**ataclysmic, **B**iblical, **A**pocalyptic, **S**overeign and **SS** Supreme to **SSS · Skycleaver**. Higher ranks multiply your score and intensify the music.
 
 **Sandbox.** `1` Legion · `2` Arrowstorm · `3` Artillery · `4` Skyfleet · `5` Colossus · `6` Sol Lance · `7` Nuke · `8` Meteor shower · `9` The Moon · `0` immortality and full Divinity.
@@ -74,6 +77,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 **Destruction**
 - A real-time slicer: meshes are cloned into two halves clipped by the cut plane, the cut faces glow molten, and the halves topple, slide or tumble, crash and dissolve. Spires, cannons, airships, the Colossus (its posed skin is baked to static geometry first), the Sol Lance station and the moon can all be cut
 - A scorch map: craters, fissures and beam trails burn into the ground and cool over time
+- The Serious Punch: a pressure wave swept through the world as a cone that widens with distance (a dedicated attack shape), with a travelling shock arch, a corridor of pressure rings, a vapor cone at the fist, a trench and dust walls torn along its path, a release cinematic, and a sky shader that parts the cloud deck in a straight canyon and a blasted ring, healing over a minute and a half
 - Deformable terrain: a heightfield the hero's power carves for real. Meteor-dive slams leave craters that grow with the fall, the Heaven Splitter tears a canyon to the horizon, shells, meteors, crashing airships and the Colossus's sword gouge the plain, the Sol Lance bores molten grooves, and a nuke or the moon leaves a bowl a hundred metres across. Crater walls turn to fractured, stratified rock; the hero, the legion, arrows, rubble, smoke and the camera all follow the ground
 - An instanced horde of up to 2,200 soldiers in one draw call, animated in the vertex shader, flung, sliced and vaporized
 - Procedural mushroom clouds with a rolling toroidal cap, stem, base surge and condensation ring; shockwaves that travel at a visible speed and flatten everything in their band
@@ -102,11 +106,12 @@ src/
     time.ts         hitstop, divine time, slowmo, time stop
     camera.ts       follow camera, trauma, kicks, dolly-zoom, cinematic shots
     post.ts         screen-effect requests (flash, shocks, haze, light shafts, streaks) feeding the post effects
-    player/         hero model, clips, controller, flying slashes
+    player/         hero model, clips, controller, flying slashes, the fist (punch.ts: jab, Serious Punch, its wave)
     enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
                     artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse
     fx/             explosions, debris, afterimages, mushroom clouds, slicer,
-                    particleFx.ts: the spark / ember / mote vocabulary on the GPU pools
+                    particleFx.ts: the spark / ember / mote vocabulary on the GPU pools,
+                    punchFx.ts: pressure rings, vapor cones, the shock arch; shards.ts: a punched moon
     world/          layout, sky, ground, scorch map, terrain heightfield, spires and mountains
     waves.ts        the eight trials
     director.ts     title attract mode, campaign/sandbox switching

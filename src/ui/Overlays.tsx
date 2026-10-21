@@ -111,6 +111,7 @@ const CONTROLS: Array<[string, string, string]> = [
   ['Slash (flying crescent)', 'Left click', 'RB / X'],
   ['Parry · hold to guard', 'Right click', 'LB / LT'],
   ['Heaven Splitter (hold)', 'E', 'RT'],
+  ['Punch · hold: Serious Punch', 'F', 'R3'],
   ['Flash-step', 'Shift', 'B'],
   ['Leap · again to dive', 'Space', 'A'],
   ['Judgment', 'Q', 'Y'],

@@ -181,6 +181,9 @@ function Help() {
         <b>E</b> hold · Heaven Splitter
       </div>
       <div>
+        <b>F</b> punch · hold: Serious Punch (50 Divinity)
+      </div>
+      <div>
         <b>Shift</b> flash-step · <b>Space</b> leap / dive
       </div>
       <div>
