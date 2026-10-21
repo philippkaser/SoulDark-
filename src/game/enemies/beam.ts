@@ -25,6 +25,7 @@ export interface BeamOpts {
 const _v = new THREE.Vector3()
 const _w = new THREE.Vector3()
 const _q = new THREE.Quaternion()
+const _g = new THREE.Vector3()
 const UP = new THREE.Vector3(0, 1, 0)
 
 /**
@@ -185,7 +186,9 @@ export class OrbitalBeam {
     if (!this.catching && d > 0.01) this.point.addScaledVector(_v.normalize(), Math.min(d, dt * 6.5))
     const inBeam = Math.hypot(pl.pos.x - this.point.x, pl.pos.z - this.point.z) < R + 0.6
     const blade = pl.chestPos(new THREE.Vector3()).setY(pl.pos.y + 2.2)
-    let end = this.point
+    // the beam reaches all the way down into the pit it bores
+    const gy = g.terrain.heightAt(this.point.x, this.point.z)
+    let end = _g.copy(this.point).setY(gy)
     if (inBeam && !pl.untouchable) {
       // first contact resolves like any threat; once caught, a parry sends it home
       const r = this.catching ? (pl.inPerfectWindow ? pl.defend('cosmic', src) : 'guard') : pl.defend('cosmic', src)
@@ -236,11 +239,13 @@ export class OrbitalBeam {
       if (this.scorchT <= 0) {
         this.scorchT = 0.08
         g.scorch.crater(this.point.x, this.point.z, R * 1.1, 1)
-        g.damage({ t: 'capsule', a: this.point.clone().setY(0), b: this.point.clone().setY(30), r: R }, { id: newHitId(), kind: 'beam', dmg: 1000, power: 10, origin: this.point.clone(), friendly: false })
+        // the beam bores into the plain and melts a groove as it sweeps
+        g.terrain.crater(this.point.x, this.point.z, R * 0.9, 0.22, { rim: 0.3, ejecta: 0, jag: 0.1 })
+        g.damage({ t: 'capsule', a: this.point.clone().setY(gy - 1), b: this.point.clone().setY(30), r: R }, { id: newHitId(), kind: 'beam', dmg: 1000, power: 10, origin: this.point.clone(), friendly: false })
       }
-      g.fx.spark(_v.copy(this.point).setY(0.3), UP, 8, 22, [1, 0.6, 0.4])
-      if (Math.random() < dt * 30) g.fx.smokeColumn(_v.copy(this.point).setY(1), 1, R, 10, 1.5, 0.1)
-      g.fx.light(_v.copy(this.point).setY(4), this.o.color, 800, 50, 30)
+      g.fx.spark(_v.copy(this.point).setY(gy + 0.3), UP, 8, 22, [1, 0.6, 0.4])
+      if (Math.random() < dt * 30) g.fx.smokeColumn(_v.copy(this.point).setY(gy + 1), 1, R, 10, 1.5, 0.1)
+      g.fx.light(_v.copy(this.point).setY(gy + 4), this.o.color, 800, 50, 30)
       this.out.visible = false
       this.outGlow.visible = false
     } else {
@@ -251,8 +256,8 @@ export class OrbitalBeam {
       const far = blade.clone().addScaledVector(dir, 700)
       // stop where it meets the ground
       if (dir.y < -0.01) {
-        const tHit = -blade.y / dir.y
-        if (tHit < 700) far.copy(blade).addScaledVector(dir, tHit)
+        const tHit = (g.terrain.heightAt(g.cam.aimPoint.x, g.cam.aimPoint.z) - blade.y) / dir.y
+        if (tHit > 0 && tHit < 700) far.copy(blade).addScaledVector(dir, tHit)
       }
       this.place(this.out, blade, far, R * 0.5, 0.3, 1)
       this.place(this.outGlow, blade, far, R * 1.2, 0.25, 1)
@@ -263,9 +268,11 @@ export class OrbitalBeam {
       if (this.tickT <= 0) {
         this.tickT = 0.1
         g.damage({ t: 'capsule', a: blade, b: far, r: R * 0.9 }, { id: newHitId(), kind: 'beam', dmg: 2500, power: 18, origin: blade, dir, friendly: true })
-        if (far.y < 1) {
+        if (far.y < g.terrain.heightAt(far.x, far.z) + 1) {
           g.scorch.crater(far.x, far.z, R, 1)
-          g.fx.explosion(far.clone().setY(1), 3, { sound: Math.random() < 0.3, debris: false })
+          // swept across the plain, the caught sun carves a molten groove
+          g.terrain.crater(far.x, far.z, R * 0.8, 0.6, { rim: 0.5, ejecta: 0, jag: 0.1 })
+          g.fx.explosion(far.clone().setY(far.y + 1), 3, { sound: Math.random() < 0.3, debris: false })
         }
       }
       // swept across its own source?

@@ -23,6 +23,11 @@ export interface FxHost {
   wind?: THREE.Vector3
 }
 
+/** Answers "how high is the ground here?" (the deformable terrain). */
+export interface GroundSampler {
+  heightAt(x: number, z: number): number
+}
+
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
 const _v = new THREE.Vector3()
 const _p = new THREE.Vector3()
@@ -137,8 +142,15 @@ export class Fx {
       this.lights.push({ light, power: 0, decay: 6 })
     }
     this.debris.onLand = (x, z, s) => {
-      if (Math.random() < 0.5) this.dust(_p.set(x, 0.2, z), 3, s, s * 1.4)
+      if (Math.random() < 0.5) this.dust(_p.set(x, this.gy(x, z) + 0.2, z), 3, s, s * 1.4)
     }
+  }
+
+  /** The ground under effects that hug it (craters are carved into the terrain). */
+  ground: GroundSampler | null = null
+
+  private gy(x: number, z: number) {
+    return this.ground ? this.ground.heightAt(x, z) : 0
   }
 
   get time() {
@@ -191,7 +203,7 @@ export class Fx {
     r.mesh.position.copy(p)
     if (opts.normal) r.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), opts.normal)
     else r.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), UP)
-    if (!opts.normal) r.mesh.position.y = Math.max(p.y, 0.06)
+    if (!opts.normal) r.mesh.position.y = Math.max(p.y, this.gy(p.x, p.z) + 0.06)
     r.mat.uniforms.uColor.value.set(color)
     r.mat.uniforms.uThick.value = opts.thick ?? 0.25
     r.mesh.visible = true
@@ -347,7 +359,8 @@ export class Fx {
   /** Generic explosion. `size` is roughly the fireball radius in metres. */
   explosion(p: THREE.Vector3, size: number, opts: { color?: string; scorch?: boolean; debris?: boolean; sound?: boolean; quiet?: boolean } = {}) {
     const s = size
-    const ground = p.y < s * 1.2
+    const gy = this.gy(p.x, p.z)
+    const ground = p.y - gy < s * 1.2
     this.light(_p.copy(p).setY(p.y + s * 0.5), opts.color ?? '#ff9a48', 40 * s * s, s * 14, 4)
     this.flare(p, s * 5, '#ffd8a0', 0.3)
     this.fireball(p, s, 0.7 + s * 0.05, s * 0.6)
@@ -360,10 +373,10 @@ export class Fx {
     }
     this.smokeColumn(_p.copy(p), 6 + s, s * 1.1, s * 1.6, 1.2, 0.1)
     if (ground) {
-      this.ring(_p.copy(p).setY(0.1), s * 3.2, '#ffb070', 0.5 + s * 0.02, { thick: 0.18 })
-      this.dust(_p.copy(p).setY(0.3), 6 + s, s * 1.2, s * 1.2)
+      this.ring(_p.copy(p).setY(gy + 0.1), s * 3.2, '#ffb070', 0.5 + s * 0.02, { thick: 0.18 })
+      this.dust(_p.copy(p).setY(gy + 0.3), 6 + s, s * 1.2, s * 1.2)
       if (opts.scorch !== false) this.host.scorch.crater(p.x, p.z, s * 1.3, 0.9)
-      if (opts.debris !== false && s > 1.5) this.debris.burst(_p.copy(p).setY(0.5), Math.min(40, Math.round(s * 4)), s * 3.5, 0.15 + s * 0.06, 1)
+      if (opts.debris !== false && s > 1.5) this.debris.burst(_p.copy(p).setY(gy + 0.5), Math.min(40, Math.round(s * 4)), s * 3.5, 0.15 + s * 0.06, 1)
     }
     const d = p.distanceTo(this.host.camera.position)
     this.host.shake(Math.min(1, s * 0.12) * Math.max(0.15, 1 - d / (s * 30)), p)
@@ -384,7 +397,7 @@ export class Fx {
     gp.emberDrift(p, Math.min(1600, 80 + s * 45), s * 1.2, { rise: 0.8 + Math.min(6, s * 0.3), burst: s * 0.9, life: 3 + Math.min(4, s * 0.15), size: 0.16 + s * 0.025, curl: 0.8 + Math.min(4, s * 0.12), wind: this.host.wind, stagger: 0.25 })
     if (ground) {
       gp.groundSparks(p, s * 3, 50 + s * 22, FIRE)
-      gp.dustMotes(_p.copy(p).setY(0.2), 20 + s * 10, s * 0.8, { out: s * 2.5, up: s * 0.6, size: 0.3 + s * 0.08, life: 2.6 })
+      gp.dustMotes(_p.copy(p).setY(this.gy(p.x, p.z) + 0.2), 20 + s * 10, s * 0.8, { out: s * 2.5, up: s * 0.6, size: 0.3 + s * 0.08, life: 2.6 })
     }
   }
 
@@ -406,7 +419,7 @@ export class Fx {
     this.ring(p, 5 * s, '#ffcf70', 0.5 + tier * 0.15, { normal, thick: 0.06, alpha: 1 })
     this.bubble(p, 1.5 * s, '#ffd890', 0.3 + tier * 0.1, 1.2)
     this.light(p, '#fff0d0', 120 * s, 20 * s, 7)
-    if (tier >= 2) this.ring(_p.copy(p).setY(0.1), 14 * s, '#ffdf9a', 0.8, { thick: 0.08 })
+    if (tier >= 2) this.ring(_p.copy(p).setY(this.gy(p.x, p.z) + 0.1), 14 * s, '#ffdf9a', 0.8, { thick: 0.08 })
     // a radial corona of sparks around the parry axis, and a spray back along it
     const gp = this.gpu
     const n = [200, 380, 560, 560][Math.min(3, tier)]
@@ -430,24 +443,25 @@ export class Fx {
 
   /** Landing / stomp shockwave on the ground. */
   groundShock(p: THREE.Vector3, radius: number, color: THREE.ColorRepresentation = '#ffd090', debris = true) {
-    this.ring(_p.copy(p).setY(0.1), radius, color, 0.55, { thick: 0.2 })
-    this.ring(_p.copy(p).setY(0.12), radius * 0.6, '#ffffff', 0.35, { thick: 0.3 })
+    const gy = this.gy(p.x, p.z)
+    this.ring(_p.copy(p).setY(gy + 0.1), radius, color, 0.55, { thick: 0.2 })
+    this.ring(_p.copy(p).setY(gy + 0.12), radius * 0.6, '#ffffff', 0.35, { thick: 0.3 })
     // a dust wall racing outward
     const n = Math.round(radius * 3 * this.host.quality)
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rnd(-0.05, 0.05)
-      _p.set(p.x + Math.sin(a) * 1.5, 0.4, p.z + Math.cos(a) * 1.5)
+      _p.set(p.x + Math.sin(a) * 1.5, gy + 0.4, p.z + Math.cos(a) * 1.5)
       _v.set(Math.sin(a) * radius * rnd(1.2, 2.2), rnd(0.5, 3), Math.cos(a) * radius * rnd(1.2, 2.2))
       this.smoke.spawn(_p, _v, [0.36, 0.31, 0.28], 0.5, rnd(1.2, 2.4), rnd(0.9, 1.6), -0.2, 2.6, { grow: 1.5 })
     }
-    if (debris) this.debris.burst(_p.copy(p).setY(0.3), Math.round(radius * 1.5), radius * 0.9, 0.18, 0.4)
+    if (debris) this.debris.burst(_p.copy(p).setY(gy + 0.3), Math.round(radius * 1.5), radius * 0.9, 0.18, 0.4)
     this.host.scorch.crater(p.x, p.z, radius * 0.45, 0.8)
     // a ring of sparks racing out along the ground, dust and embers in its wake
     const c = tint(color)
-    this.gpu.groundSparks(p, radius * 0.9, 140 + radius * 18, c, { size: 0.09 + radius * 0.002 })
-    this.gpu.plasmaRing(_p.copy(p).setY(0.35), UP, radius * 0.75, 200 + radius * 10, c, { expand: 0.35, fill: 0.2, thick: 0.05, life: 0.6, size: 0.07, gravity: 4 })
-    this.gpu.dustMotes(_p.copy(p).setY(0.1), 40 + radius * 4, radius * 0.25, { out: radius * 1.4, up: 2.2, life: 2.6, size: 0.45 })
-    this.gpu.emberDrift(_p.copy(p).setY(0.2), 30 + radius * 3, radius * 0.5, { rise: 1.2, burst: 2, flat: 0.85, life: 2.5, wind: this.host.wind })
+    this.gpu.groundSparks(_p.copy(p).setY(gy), radius * 0.9, 140 + radius * 18, c, { size: 0.09 + radius * 0.002 })
+    this.gpu.plasmaRing(_p.copy(p).setY(gy + 0.35), UP, radius * 0.75, 200 + radius * 10, c, { expand: 0.35, fill: 0.2, thick: 0.05, life: 0.6, size: 0.07, gravity: 4 })
+    this.gpu.dustMotes(_p.copy(p).setY(gy + 0.1), 40 + radius * 4, radius * 0.25, { out: radius * 1.4, up: 2.2, life: 2.6, size: 0.45 })
+    this.gpu.emberDrift(_p.copy(p).setY(gy + 0.2), 30 + radius * 3, radius * 0.5, { rise: 1.2, burst: 2, flat: 0.85, life: 2.5, wind: this.host.wind })
   }
 
   /** A soldier struck down: the body burns away into glowing ash that drifts off on the wind. */

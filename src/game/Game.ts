@@ -18,6 +18,7 @@ import { FOG_COLOR, SUN_DIR } from './world/layout'
 import { Props } from './world/props'
 import { ScorchMap } from './world/scorch'
 import { Sky } from './world/sky'
+import { Terrain } from './world/terrain'
 
 /** A gameplay system that plugs into the frame loop. */
 export interface System {
@@ -58,6 +59,8 @@ export class Game {
   readonly cam = new CameraRig()
   readonly sky = new Sky()
   readonly scorch = new ScorchMap()
+  /** The deformable ground: craters, trenches, heightAt for anything that stands on it. */
+  readonly terrain: Terrain
   readonly fx: Fx
   readonly slicer = new Slicer()
   readonly props: Props
@@ -68,7 +71,7 @@ export class Game {
   private windGust = new THREE.Vector3()
   readonly sun: THREE.DirectionalLight
   readonly fill: THREE.HemisphereLight
-  private ground: THREE.Mesh
+  private ground: THREE.Object3D
   private systems: System[] = []
   private damageables: Damageable[] = []
   mode: GameMode = 'title'
@@ -90,6 +93,7 @@ export class Game {
     this.quality = quality
     this.q = quality === 'high' ? 1 : quality === 'medium' ? 0.75 : 0.5
     this.camera = camera
+    this.terrain = new Terrain(quality === 'low' ? 256 : 512)
     this.fx = new Fx({
       camera,
       post: this.post,
@@ -106,7 +110,19 @@ export class Game {
     this.player = new Player(this)
     this.slashes = new Slashes(this)
     this.props = new Props(this)
-    this.ground = buildGround(this.scorch, quality)
+    this.ground = buildGround(this.scorch, this.terrain, quality)
+    // everything that touches the ground finds the terrain
+    this.fx.debris.ground = this.terrain
+    this.fx.ground = this.terrain
+    this.fx.gpu.light.setGround(this.terrain.tex, this.terrain.half)
+    this.fx.gpu.soft.setGround(this.terrain.tex, this.terrain.half)
+    this.slicer.ground = this.terrain
+    this.cam.ground = this.terrain
+    for (const pool of [this.fx.smoke, this.fx.fire]) {
+      if (!pool.uniforms.uTerrain) continue
+      pool.uniforms.uTerrain.value = this.terrain.tex
+      pool.uniforms.uTerrainHalf.value = this.terrain.half
+    }
     this.fx.ghosts.bind(this.player.model)
 
     // light: the eclipse's corona from the north, a bruised sky above
@@ -200,6 +216,7 @@ export class Game {
     const fx = this.fx
     const len = a.distanceTo(b)
     const steps = Math.ceil(len / 6)
+    const seed = (Math.random() * 1e6) | 0
     // the fissure tears open along the line, outrunning sound
     for (let i = 0; i < steps; i++) {
       const t0 = i / steps
@@ -208,6 +225,7 @@ export class Game {
         const p0 = _v.lerpVectors(a, b, t0).clone()
         const p1 = _w.lerpVectors(a, b, t1).clone()
         this.scorch.fissure(p0.x, p0.z, p1.x, p1.z, 0.8 + k * 1.6, 1)
+        this.terrain.trench(a.x, a.z, b.x, b.z, 3 + k * 9, 1.5 + k * 10, { seed, from: t0, to: t1 })
         const mid = p0.clone().lerp(p1, 0.5).setY(0.3)
         fx.debris.burst(mid, Math.round(2 + k * 4), 8 + k * 14, 0.12 + k * 0.18, 1, 1.4)
         fx.dust(mid, 2, 2 + k * 3, 2 + k * 3)
@@ -278,6 +296,7 @@ export class Game {
     this.post.reset()
     this.sky.reset()
     this.scorch.clear()
+    this.terrain.reset()
     this.fx.clear()
     this.slicer.clear()
     this.slashes.clear()
@@ -331,6 +350,7 @@ export class Game {
     this.slicer.update(wdt)
     this.props.root.updateMatrixWorld()
     this.scorch.update(rdt)
+    this.terrain.update(rdt)
     this.score.update(rdt)
 
     // camera

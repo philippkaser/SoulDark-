@@ -162,6 +162,8 @@ attribute vec4 aMs; // seed, flicker, core, fadeIn
 uniform float uTime;
 uniform float uScale;
 uniform float uMinPx;
+uniform sampler2D uTerrain;
+uniform float uTerrainHalf;
 varying vec4 vColor;
 varying vec2 vUv;
 varying float vLen;
@@ -192,6 +194,14 @@ vec3 flow(vec3 p, float s) {
     sin(p.x * 1.6 + T * 1.1 + sin(p.y * 1.4 + T * 0.5)));
 }
 
+// the carved terrain (0 outside the field, or when there is none)
+float groundAt(vec2 xz) {
+  if (uTerrainHalf <= 0.0) return 0.0;
+  vec2 uv = xz / (2.0 * uTerrainHalf) + 0.5;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
+  return texture2D(uTerrain, uv).r;
+}
+
 void main() {
   float t = uTime - aOB.w;
   float life = aVL.w;
@@ -206,9 +216,11 @@ void main() {
   vec3 vel;
   ballistic(aOB.xyz, aVL.xyz, g, k, t, pos, vel);
   float bounce = aFx.w;
-  if (bounce >= 0.0 && pos.y < 0.0) {
-    if (aOB.y <= 0.0) {
-      pos.y = 0.0;
+  // the floor is the terrain under the spark's origin (craters are carved below y = 0)
+  float gr = bounce >= 0.0 ? groundAt(aOB.xz) : 0.0;
+  if (bounce >= 0.0 && pos.y < gr) {
+    if (aOB.y <= gr) {
+      pos.y = gr;
       vel.y = 0.0;
     } else {
       float lo = 0.0;
@@ -216,16 +228,16 @@ void main() {
       for (int i = 0; i < 10; i++) {
         float mid = (lo + hi) * 0.5;
         float y = aOB.y + aVL.y * dragF(k, mid) - g * dragG(k, mid);
-        if (y > 0.0) lo = mid; else hi = mid;
+        if (y > gr) lo = mid; else hi = mid;
       }
       float t1 = (lo + hi) * 0.5;
       vec3 p1;
       vec3 v1;
       ballistic(aOB.xyz, aVL.xyz, g, k, t1, p1, v1);
       float fr = 0.45 + 0.4 * bounce;
-      ballistic(vec3(p1.x, 0.0, p1.z), vec3(v1.x * fr, -v1.y * bounce, v1.z * fr), g, k, t - t1, pos, vel);
-      if (pos.y < 0.0) {
-        pos.y = 0.0;
+      ballistic(vec3(p1.x, gr, p1.z), vec3(v1.x * fr, -v1.y * bounce, v1.z * fr), g, k, t - t1, pos, vel);
+      if (pos.y < gr) {
+        pos.y = gr;
         vel.y = 0.0;
       }
     }
@@ -235,7 +247,7 @@ void main() {
     vec3 f = flow(pos * aFx.y + aMs.x * 3.0, aMs.x);
     pos += f * curl * t;
     vel += f * curl;
-    if (bounce >= 0.0) pos.y = max(pos.y, 0.0);
+    if (bounce >= 0.0) pos.y = max(pos.y, gr);
   }
 
   float size = mix(aSz.x, aSz.y, age);
@@ -374,7 +386,14 @@ export interface GpuParticlesOpts {
 export class GpuParticles {
   readonly mesh: THREE.Mesh
   readonly capacity: number
-  readonly uniforms: { uTime: THREE.IUniform<number>; uScale: THREE.IUniform<number>; uMinPx: THREE.IUniform<number>; uAdditive: THREE.IUniform<number> }
+  readonly uniforms: {
+    uTime: THREE.IUniform<number>
+    uScale: THREE.IUniform<number>
+    uMinPx: THREE.IUniform<number>
+    uAdditive: THREE.IUniform<number>
+    uTerrain: THREE.IUniform<THREE.Texture | null>
+    uTerrainHalf: THREE.IUniform<number>
+  }
   /** World seconds since the pool was created or cleared. */
   time = 0
   private data: Float32Array
@@ -403,7 +422,7 @@ export class GpuParticles {
     g.instanceCount = 0
     this.geo = g
     const additive = o.blending !== 'normal'
-    this.uniforms = { uTime: { value: 0 }, uScale: { value: 600 }, uMinPx: { value: 1.3 }, uAdditive: { value: additive ? 1 : 0 } }
+    this.uniforms = { uTime: { value: 0 }, uScale: { value: 600 }, uMinPx: { value: 1.3 }, uAdditive: { value: additive ? 1 : 0 }, uTerrain: { value: null }, uTerrainHalf: { value: 0 } }
     const mat = new THREE.ShaderMaterial({
       vertexShader: vert,
       fragmentShader: frag,
@@ -464,6 +483,12 @@ export class GpuParticles {
     d[k + 16] *= sizeMul
     d[k + 17] *= sizeMul
     d[k + 24] = Math.random()
+  }
+
+  /** Sparks bounce on this heightfield (R channel, covering +/-half on x and z) instead of y = 0. */
+  setGround(tex: THREE.Texture, half: number) {
+    this.uniforms.uTerrain.value = tex
+    this.uniforms.uTerrainHalf.value = half
   }
 
   setViewport(heightPx: number, fovDeg: number) {

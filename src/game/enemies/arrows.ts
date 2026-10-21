@@ -106,9 +106,9 @@ export class Arrows implements System {
     const rr = Math.sqrt(Math.random()) * spread
     const tx = p.x + Math.sin(a) * rr
     const tz = p.z + Math.cos(a) * rr
-    const ty = 1.2
+    const ty = p.y + 1.2
     const T = 1.9 + Math.random() * 0.45
-    const sy = 1.6
+    const sy = this.game.terrain.heightAt(fx, fz) + 1.6
     this.pos.set([fx, sy, fz], i * 3)
     this.vel.set([(tx - fx) / T, (ty - sy) / T + 0.5 * G * T, (tz - fz) / T], i * 3)
     this.st[i] = A.Incoming
@@ -191,6 +191,7 @@ export class Arrows implements System {
         this.pos[k + 1] += this.vel[k + 1] * dt
         this.pos[k + 2] += this.vel[k + 2] * dt
       }
+      const gy = s === A.Incoming || s === A.Falling ? g.terrain.heightAt(this.pos[k], this.pos[k + 2]) : 0
       if (s === A.Incoming) {
         const dx = this.pos[k] - chest.x
         const dy = this.pos[k + 1] - chest.y
@@ -211,8 +212,8 @@ export class Arrows implements System {
             this.st[i] = A.Free
             landed++
           }
-        } else if (this.pos[k + 1] <= 0.05) {
-          this.pos[k + 1] = 0.05
+        } else if (this.pos[k + 1] <= gy + 0.05) {
+          this.pos[k + 1] = gy + 0.05
           this.st[i] = A.Stuck
           this.life[i] = Math.min(this.life[i], 3)
           if (Math.random() < 0.1) audio.arrowHit({ x: this.pos[k], z: this.pos[k + 2] })
@@ -224,9 +225,9 @@ export class Arrows implements System {
         } else if (Math.random() < dt * 12) {
           g.fx.glow.spawn(_p.set(this.pos[k], this.pos[k + 1], this.pos[k + 2]), _d.set(0, 0, 0), [1, 0.8, 0.45], 0.8, 0.08, 0.2, 0, 0)
         }
-      } else if (s === A.Falling && this.pos[k + 1] <= 0.05) {
+      } else if (s === A.Falling && this.pos[k + 1] <= gy + 0.05) {
         this.st[i] = A.Stuck
-        this.pos[k + 1] = 0.05
+        this.pos[k + 1] = gy + 0.05
         this.life[i] = 2
       }
       // draw
