@@ -57,14 +57,14 @@ const DUST: readonly [number, number, number] = [0.34, 0.28, 0.24]
 /**
  * The wave's heading: the aim's, tilted up with the aim (never down), at most
  * MAX_TILT. The follow camera cannot look up far, so upward aim counts for
- * more (`gain`); a direction toward a target passes gain 1.
+ * more (`gain`), and a slight upward glance still punches level (`bias`); a
+ * direction straight at a target passes gain 1, bias 0.
  */
-export function waveDir(aim: THREE.Vector3, out: THREE.Vector3, gain = 1.8) {
+export function waveDir(aim: THREE.Vector3, out: THREE.Vector3, gain = 1.8, bias = 0.04) {
   const l = Math.hypot(aim.x, aim.z)
   const fx = l > 1e-5 ? aim.x / l : 0
   const fz = l > 1e-5 ? aim.z / l : -1
-  // the default camera looks a little down: that still punches level
-  const tilt = clamp((Math.atan2(aim.y, Math.max(l, 1e-5)) - 0.04) * gain, 0, MAX_TILT)
+  const tilt = clamp((Math.atan2(aim.y, Math.max(l, 1e-5)) - bias) * gain, 0, MAX_TILT)
   return out.set(fx * Math.cos(tilt), Math.sin(tilt), fz * Math.cos(tilt))
 }
 
@@ -379,7 +379,7 @@ export class Punch implements System {
     // a falling moon roughly ahead draws the fist up to it
     const moon = g.forces?.eclipse.moonTarget
     if (moon && headingGap(_v.subVectors(moon, w.origin), w.dir) < MOON_ASSIST) {
-      waveDir(_v, w.dir, 1)
+      waveDir(_v, w.dir, 1, 0)
       this.fistAt(w.dir, w.origin)
     }
     w.flat.set(w.dir.x, 0, w.dir.z).normalize()

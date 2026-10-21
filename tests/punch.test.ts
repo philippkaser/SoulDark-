@@ -60,10 +60,9 @@ describe('the Serious Punch wave', () => {
     expect(out.z).toBeLessThan(0)
     waveDir(v(0, 5, -1).normalize(), out)
     expect(Math.asin(out.y)).toBeCloseTo(MAX_TILT)
-    // aimed straight at something (gain 1), the heading is kept exactly
-    waveDir(v(3, 1, -4).normalize(), out, 1)
-    expect(Math.atan2(out.x, out.z)).toBeCloseTo(Math.atan2(3, -4))
-    expect(Math.asin(out.y)).toBeCloseTo(Math.atan2(1, 5) - 0.04)
+    // aimed straight at something (gain 1, no bias), the direction is kept exactly
+    waveDir(v(3, 1, -4).normalize(), out, 1, 0)
+    expect(out.distanceTo(v(3, 1, -4).normalize())).toBeCloseTo(0)
   })
 
   test('the kill zone widens to ~20 degrees, and reaches three kilometres in a few seconds', () => {
@@ -82,7 +81,7 @@ describe('the Serious Punch wave', () => {
     // the Sol Lance hangs too high for a level punch, but not for one thrown up at it
     const lance = v(160, 480, -320)
     expect(waveReach(o, d, lance, 40)).toBe(-1)
-    const up = waveDir(lance.clone().sub(o).normalize(), v(0, 0, 0), 1)
+    const up = waveDir(lance.clone().sub(o).normalize(), v(0, 0, 0), 1, 0)
     expect(waveReach(o, up, lance, 40)).toBeGreaterThan(0)
   })
 
