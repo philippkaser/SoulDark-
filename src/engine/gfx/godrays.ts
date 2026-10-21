@@ -53,9 +53,10 @@ void main() {
     o.rgb = max(sky - uSunThreshold, 0.0) * uSunOn / (1.0 + d * d * 30.0);
   }
   if (uBlastOn > 0.0) {
+    // only the fireball's core emits, not the sky and ground it lights up, or the shafts melt into a veil
     float d = length((vUv - uBlast) * asp);
     float lum = dot(all, vec3(0.2126, 0.7152, 0.0722));
-    o.a = max(lum - 0.9, 0.0) * uBlastOn * exp(-d * d * 5.0);
+    o.a = max(lum - 2.5, 0.0) * uBlastOn * exp(-d * d * 8.0);
   }
   gl_FragColor = min(o, vec4(12.0));
 }
@@ -105,15 +106,24 @@ void main() {
 }
 `
 
+// shafts fade with screen distance from their light, so they reach across the sky without fogging the foreground
 const composite = /* glsl */ `
 uniform sampler2D tRays;
+uniform vec2 uSunUv;
 uniform float uSunGain;
+uniform float uSunReach;
+uniform vec2 uBlastUv;
 uniform vec3 uBlastColor;
 uniform float uBlastGain;
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
   vec4 r = texture2D(tRays, uv);
-  outputColor = vec4(inputColor.rgb + r.rgb * uSunGain + uBlastColor * (r.a * uBlastGain), inputColor.a);
+  vec2 asp = vec2(aspect, 1.0);
+  vec2 ds = (uv - uSunUv) * asp;
+  vec2 db = (uv - uBlastUv) * asp;
+  float fs = uSunGain / (1.0 + dot(ds, ds) * uSunReach);
+  float fb = uBlastGain / (1.0 + dot(db, db) * 1.2);
+  outputColor = vec4(inputColor.rgb + r.rgb * fs + uBlastColor * (r.a * fb), inputColor.a);
 }
 `
 
@@ -121,9 +131,9 @@ function shader(frag: string, uniforms: Record<string, THREE.IUniform>, defines:
   return new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: frag, uniforms, defines, depthTest: false, depthWrite: false, blending: THREE.NoBlending, toneMapped: false })
 }
 
-export interface GodRaysOptions {
-  /** 0.5 low .. 1 high: sample count and buffer resolution. */
-  quality?: number
+/** Buffer scale and radial-blur taps per quality factor (1 high, 0.75 medium, 0.5 low). */
+export function godRaysBudget(quality: number) {
+  return quality >= 1 ? { scale: 0.5, samples: 36 } : quality >= 0.75 ? { scale: 0.4, samples: 28 } : { scale: 0.3, samples: 20 }
 }
 
 export class GodRaysEffect extends Effect {
@@ -137,6 +147,8 @@ export class GodRaysEffect extends Effect {
   /** Composite gains (exposure of the shafts). */
   sunGain = 1
   blastGain = 1
+  /** How fast sun shafts fade with screen distance from the sun (higher = shorter). */
+  sunReach = 2.5
   private rtA: THREE.WebGLRenderTarget
   private rtB: THREE.WebGLRenderTarget
   private maskPass: ShaderPass
@@ -145,20 +157,23 @@ export class GodRaysEffect extends Effect {
   private blurU: Record<string, THREE.IUniform>
   private scale: number
   private samples: number
-  private idle = false
 
-  constructor({ quality = 1 }: GodRaysOptions = {}) {
+  constructor({ quality = 1 }: { quality?: number } = {}) {
     super('GodRaysEffect', composite, {
       attributes: EffectAttribute.DEPTH,
       uniforms: new Map<string, THREE.Uniform>([
         ['tRays', new THREE.Uniform(null)],
+        ['uSunUv', new THREE.Uniform(new THREE.Vector2())],
         ['uSunGain', new THREE.Uniform(0)],
+        ['uSunReach', new THREE.Uniform(2.5)],
+        ['uBlastUv', new THREE.Uniform(new THREE.Vector2())],
         ['uBlastColor', new THREE.Uniform(new THREE.Color())],
         ['uBlastGain', new THREE.Uniform(0)],
       ]),
     })
-    this.scale = quality >= 1 ? 0.5 : quality >= 0.75 ? 0.4 : 0.3
-    this.samples = quality >= 1 ? 40 : quality >= 0.75 ? 30 : 20
+    const b = godRaysBudget(quality)
+    this.scale = b.scale
+    this.samples = b.samples
     const opts = { type: THREE.HalfFloatType, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }
     this.rtA = new THREE.WebGLRenderTarget(1, 1, opts)
     this.rtB = new THREE.WebGLRenderTarget(1, 1, opts)
@@ -203,21 +218,23 @@ export class GodRaysEffect extends Effect {
     const h = Math.max(1, Math.round(height * this.scale))
     this.rtA.setSize(w, h)
     this.rtB.setSize(w, h)
-    this.maskU.uTexel.value.set(0.5 / width / this.scale, 0.5 / height / this.scale)
+    // four bilinear taps half a low-res texel out cover each low-res texel's whole footprint
+    this.maskU.uTexel.value.set(0.5 / w, 0.5 / h)
     this.maskU.uAspect.value = width / Math.max(1, height)
   }
 
   update(renderer: THREE.WebGLRenderer, inputBuffer: THREE.WebGLRenderTarget) {
     const sunOn = this.sunStrength > 0.002 ? this.sunStrength : 0
     const blastOn = this.blastStrength > 0.002 ? this.blastStrength : 0
-    this.uniforms.get('uSunGain')!.value = sunOn > 0 ? this.sunGain : 0
-    this.uniforms.get('uBlastGain')!.value = blastOn > 0 ? this.blastGain : 0
-    this.uniforms.get('uBlastColor')!.value.copy(this.blastColor)
-    if (!sunOn && !blastOn) {
-      this.idle = true
-      return
-    }
-    this.idle = false
+    const u = this.uniforms
+    u.get('uSunGain')!.value = sunOn > 0 ? this.sunGain : 0
+    u.get('uBlastGain')!.value = blastOn > 0 ? this.blastGain : 0
+    u.get('uSunUv')!.value.copy(this.sun)
+    u.get('uSunReach')!.value = this.sunReach
+    u.get('uBlastUv')!.value.copy(this.blast)
+    u.get('uBlastColor')!.value.copy(this.blastColor)
+    // nothing to shine: skip all three low-res passes
+    if (!sunOn && !blastOn) return
     this.maskU.uSunOn.value = sunOn
     this.maskU.uBlastOn.value = blastOn
     this.blurU.uSunOn.value = sunOn
@@ -230,11 +247,6 @@ export class GodRaysEffect extends Effect {
     this.blurU.uLen.value = 1 / this.samples
     this.blurU.uDecay.value = 1
     this.blurPass.render(renderer, this.rtB, this.rtA)
-  }
-
-  /** True when the last frame skipped the shaft passes. */
-  get sleeping() {
-    return this.idle
   }
 
   dispose() {

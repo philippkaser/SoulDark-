@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -65,8 +65,10 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 
 **Combat feel**
 - Two clocks: hitstop freezes everything, *divine time* slows the world but not the hero, and Judgment stops world time completely
-- A custom post-processing pass for flash frames, inverted and threshold impact frames, radial zoom punches, speed lines, chromatic kicks, screen-space shockwave distortion, desaturation and a damage vignette
-- Trauma camera shake, FOV kicks and scripted cinematic shots (the nuke return, the finale)
+- A custom post-processing pass for flash frames, inverted and threshold impact frames, radial zoom punches, speed lines, chromatic kicks, up to six stacked refractive shock rings, world-anchored heat haze over burning ground, lens-edge chromatic fringe, desaturation and a damage vignette
+- Screen-space volumetric light shafts: the eclipse corona pours through the citadel towers, the spires and the hero (half-resolution radial blur of the sky found through the depth buffer); nukes, the Sol Lance, the Heaven Splitter and the moon cleave throw a second, transient light whose shafts radiate through whatever stands in front of the blast
+- Anamorphic lens streaks from the hottest pixels, kicked by parries and explosions
+- Trauma camera shake, FOV kicks, directional kicks, a vertigo dolly-zoom on divine parries and scripted cinematic shots (the nuke return, the finale)
 - Afterimages from frozen skeleton copies, sword trails, a verlet-cloth coat and scarf
 
 **Destruction**
@@ -90,7 +92,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 src/
   engine/           reusable pieces
     rig/            skeleton + IK, pose clips, procedural models, cloth, trails
-    gfx/            patched materials (molten cut faces), noise, textures, PowerFX post effect
+    gfx/            patched materials (molten cut faces), noise, textures, post effects (PowerFX, god rays, lens streaks)
     geom.ts         attack shapes (sphere, capsule, sector, slab, ring) and their tests
     particles.ts    pooled additive points and lit, depth-sorted billboard smoke
     gpuParticles.ts stateless GPU particles: closed-form motion on the world clock, ring-buffer uploads, streaks
@@ -98,8 +100,8 @@ src/
     Game.ts         systems, damage routing, threats, reflect targeting, the frame loop
     create.ts       wires every system and the sandbox spawn table
     time.ts         hitstop, divine time, slowmo, time stop
-    camera.ts       follow camera, trauma, cinematic shots
-    post.ts         drives the PowerFX uniforms
+    camera.ts       follow camera, trauma, kicks, dolly-zoom, cinematic shots
+    post.ts         screen-effect requests (flash, shocks, haze, light shafts, streaks) feeding the post effects
     player/         hero model, clips, controller, flying slashes
     enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
                     artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse

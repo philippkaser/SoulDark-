@@ -49,6 +49,16 @@ export function dollyScale(fov0: number, fov1: number) {
 }
 
 /**
+ * How far the camera moves toward its look point (negative: away) when the
+ * lens goes from `fov0` to `fov1`, so a subject up to DOLLY_SUBJECT away keeps
+ * its size. Never closer than 1.2 m to the look point.
+ */
+export function dollyMove(fov0: number, fov1: number, lookDist: number) {
+  const sd = Math.min(lookDist, DOLLY_SUBJECT)
+  return Math.min(sd - sd * dollyScale(fov0, fov1), lookDist - 1.2)
+}
+
+/**
  * Over-the-shoulder action camera with trauma shake, FOV punches and
  * blended cinematic shots. Also owns the aim ray every attack follows.
  */
@@ -234,13 +244,11 @@ export class CameraRig {
       if (this.dollyT >= this.dollyDur) this.dollyDur = 0
       else {
         fovOut = clamp(this.fov + this.dollyAmount, 15, 150)
-        // move along the view line so a subject up to DOLLY_SUBJECT away keeps its size
+        // move along the view line so the subject keeps its size
         _off.subVectors(this.look, this.pos)
         const d = _off.length()
-        const sd = Math.min(d, DOLLY_SUBJECT)
-        const move = Math.min(sd - sd * dollyScale(this.fov, fovOut), d - 1.2)
-        if (d > 1e-3) this.pos.addScaledVector(_off, move / d)
-        this.pos.y = Math.max(0.45, this.pos.y)
+        if (d > 1e-3) this.pos.addScaledVector(_off, dollyMove(this.fov, fovOut, d) / d)
+        this.pos.y = Math.max((this.ground ? this.ground.heightAt(this.pos.x, this.pos.z) : 0) + 0.45, this.pos.y)
       }
     }
 

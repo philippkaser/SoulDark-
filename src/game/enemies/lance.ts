@@ -143,7 +143,7 @@ export class Lance implements System {
     g.post.rays(p, 1.6, 2.6, '#ffd6b0')
     g.post.shock(p, g.camera, 0.045)
     g.post.shock(p, g.camera, 0.03, { delay: 0.22, speed: 1.2, width: 1.6 })
-    g.post.streak(1.8)
+    g.post.streak(1.8, p)
     g.cam.addTrauma(0.5)
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(1, 0.2, 0.3).normalize(), p)
     g.slicer.slice([this.station], plane, {

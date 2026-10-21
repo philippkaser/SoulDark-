@@ -3,10 +3,11 @@ import * as THREE from 'three'
 
 /**
  * Anamorphic lens streaks: the brightest pixels smear into long horizontal
- * lines. A bright-pass at quarter resolution, then three horizontal blurs
- * with growing stride (1, 7, 49 texels) that together approximate an
- * exponential falloff hundreds of texels long. Like the god rays, the merged
- * effect only reads its own texture, so it shares a pass with bloom.
+ * lines. A bright-pass into a buffer that is coarse across and finer down (so
+ * the lines stay thin), then three horizontal blurs with growing stride (1, 7,
+ * 49 texels) that together approximate an exponential falloff hundreds of
+ * texels long. Like the god rays, the merged effect only reads its own
+ * texture, so it shares a pass with bloom.
  */
 
 const vert = /* glsl */ `
@@ -73,13 +74,20 @@ function shader(frag: string, uniforms: Record<string, THREE.IUniform>) {
   return new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false, blending: THREE.NoBlending, toneMapped: false })
 }
 
-/** Texel strides of the three blur passes and the per-texel falloff length. */
-export const STREAK_STRIDES = [1, 7, 49] as const
+/** Texel strides of the three blur passes. */
+const STREAK_STRIDES = [1, 7, 49] as const
+
+/** Streak buffer scale (across, down) per quality factor (1 high, 0.75 medium, 0.5 low). */
+export function streakBudget(quality: number) {
+  return quality >= 1 ? { sx: 0.25, sy: 0.5 } : quality >= 0.75 ? { sx: 0.25, sy: 0.33 } : { sx: 0.2, sy: 0.25 }
+}
 
 export class StreakEffect extends Effect {
   /** Overall streak strength (0 = off, passes skipped). */
   amount = 0
   readonly tint = new THREE.Color(0.55, 0.75, 1.35)
+  /** Falloff length of the streak, in low-res texels. */
+  length = 60
   private rtA: THREE.WebGLRenderTarget
   private rtB: THREE.WebGLRenderTarget
   private brightPass: ShaderPass
@@ -87,9 +95,8 @@ export class StreakEffect extends Effect {
   private brightU: Record<string, THREE.IUniform>
   private lineU: Record<string, THREE.IUniform>
   private texelX = 1
-  private scale: number
-  /** Falloff length of the streak, in low-res texels. */
-  length = 70
+  private sx: number
+  private sy: number
 
   constructor({ quality = 1 }: { quality?: number } = {}) {
     super('StreakEffect', composite, {
@@ -99,7 +106,9 @@ export class StreakEffect extends Effect {
         ['uTint', new THREE.Uniform(new THREE.Color())],
       ]),
     })
-    this.scale = quality >= 0.75 ? 0.25 : 0.2
+    const b = streakBudget(quality)
+    this.sx = b.sx
+    this.sy = b.sy
     const opts = { type: THREE.HalfFloatType, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }
     this.rtA = new THREE.WebGLRenderTarget(1, 1, opts)
     this.rtB = new THREE.WebGLRenderTarget(1, 1, opts)
@@ -107,6 +116,7 @@ export class StreakEffect extends Effect {
     this.lineU = { tMap: { value: null }, uStep: { value: 0 }, uFall: { value: 0.1 } }
     this.brightPass = new ShaderPass(shader(brightFrag, this.brightU))
     this.linePass = new ShaderPass(shader(lineFrag, this.lineU), 'tMap')
+    // three line passes ping-pong A -> B -> A -> B
     this.uniforms.get('tStreak')!.value = this.rtB.texture
   }
 
@@ -116,12 +126,13 @@ export class StreakEffect extends Effect {
   }
 
   setSize(width: number, height: number) {
-    const w = Math.max(1, Math.round(width * this.scale))
-    const h = Math.max(1, Math.round(height * this.scale))
+    const w = Math.max(1, Math.round(width * this.sx))
+    const h = Math.max(1, Math.round(height * this.sy))
     this.rtA.setSize(w, h)
     this.rtB.setSize(w, h)
     this.texelX = 1 / w
-    this.brightU.uTexel.value.set(0.5 / width / this.scale, 0.5 / height / this.scale)
+    // four bilinear taps half a low-res texel out cover each low-res texel's footprint
+    this.brightU.uTexel.value.set(0.5 / w, 0.5 / h)
   }
 
   update(renderer: THREE.WebGLRenderer, inputBuffer: THREE.WebGLRenderTarget) {
@@ -130,7 +141,6 @@ export class StreakEffect extends Effect {
     this.uniforms.get('uTint')!.value.copy(this.tint)
     if (!on) return
     this.brightPass.render(renderer, inputBuffer, this.rtA)
-    // A -> B -> A -> B: three strides
     let src = this.rtA
     let dst = this.rtB
     for (const stride of STREAK_STRIDES) {

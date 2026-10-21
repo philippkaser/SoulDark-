@@ -60,6 +60,14 @@ interface Haze {
 }
 
 const HAZE_IN = 0.4
+/** Blast light attack (real seconds). */
+const BLAST_IN = 0.06
+
+/** How much of a blast light is left at age `t` of `dur` (1 at the flash, easing to 0; the short attack is applied on top). */
+export function blastEnvelope(t: number, dur: number) {
+  const u = clamp(t / dur, 0, 1)
+  return (1 - u) * (1 - u)
+}
 
 /**
  * Screen-space "power" effects requested by gameplay; the post effects read
@@ -113,11 +121,13 @@ export class PostState {
   private blast = { pos: new THREE.Vector3(), strength: 0, t: 0, dur: 1 }
 
   /** Anamorphic streak: resting level for the hottest pixels, plus kicks. */
-  streakBase = 0.35
+  streakBase = 0.1
   streakKick = 0
   /** Edge chromatic fringe (uv units at the corners). */
   fringe = 0.004
 
+  /** The camera of the last update, for world-anchored requests that don't pass one. */
+  private camera: THREE.Camera | null = null
   private seq: number[] = []
   private seqT = 0
   private seqStep = 1 / 24
@@ -146,7 +156,7 @@ export class PostState {
       this.flashDecay = decay
     }
     // every flash of light also flares the lens
-    this.streakKick = Math.max(this.streakKick, a * 1.6)
+    this.streakKick = Math.max(this.streakKick, a * 1.2)
   }
 
   /**
@@ -259,7 +269,17 @@ export class PostState {
    */
   rays(worldPos: THREE.Vector3, strength = 1, dur = 1.5, color: THREE.ColorRepresentation = '#ffdcae') {
     const s = this.reduce ? strength * 0.35 : strength
-    if (s < this.blastRays) return
+    const b = this.blast
+    if (b.strength > 0) {
+      // one blast light at a time: the brighter one wins, and one the camera can see beats one it can't
+      let cur = b.strength * blastEnvelope(b.t, b.dur)
+      let next = s
+      if (this.camera) {
+        cur *= lightOnScreen(b.pos, this.camera, _s) + 0.01
+        next *= lightOnScreen(worldPos, this.camera, _s) + 0.01
+      }
+      if (next < cur) return
+    }
     this.blast.pos.copy(worldPos)
     this.blast.strength = s
     this.blast.t = 0
@@ -267,8 +287,12 @@ export class PostState {
     this.blastColor.set(color)
   }
 
-  /** Anamorphic lens streak kick; decays fast. */
-  streak(amount: number) {
+  /**
+   * Anamorphic lens streak kick; decays fast. With `at`, the kick scales with
+   * how visible that point is (a blast behind the camera flares nothing).
+   */
+  streak(amount: number, at?: THREE.Vector3) {
+    if (at && this.camera) amount *= lightOnScreen(at, this.camera, _s)
     this.streakKick = Math.max(this.streakKick, this.reduce ? amount * 0.35 : amount)
   }
 
@@ -289,6 +313,7 @@ export class PostState {
    * shafts); `wdt` drives the haze, which lives on world time.
    */
   update(rdt: number, camera?: THREE.Camera, wdt = rdt) {
+    if (camera) this.camera = camera
     this.flash = Math.max(0, this.flash - rdt * this.flashDecay * Math.max(0.3, this.flash))
     this.zoom = Math.max(0, this.zoom - rdt * (0.6 + this.zoom * 3))
     if (this.linesHold > 0) this.linesHold -= rdt
@@ -350,9 +375,8 @@ export class PostState {
       const u = b.t / b.dur
       if (u >= 1) b.strength = 0
       else {
-        const env = Math.min(1, b.t / 0.06) * (1 - u) * (1 - u)
         const vis = camera ? lightOnScreen(b.pos, camera, this.blastScreen) : 0
-        this.blastRays = b.strength * env * vis
+        this.blastRays = b.strength * Math.min(1, b.t / BLAST_IN) * blastEnvelope(b.t, b.dur) * vis
       }
     }
     if (camera) this.sunVis = lightOnScreen(this.sunDir, camera, this.sunScreen, true)

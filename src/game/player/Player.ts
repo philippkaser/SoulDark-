@@ -207,6 +207,8 @@ export class Player {
     if (n >= 2) g.post.shock(hitP, g.camera, 0.02 + n * 0.008)
     g.cam.addTrauma(0.25 + n * 0.18)
     g.cam.kickFov(-4 - n * 2)
+    // divine parries: vertigo, the world falls away behind the hero
+    if (n >= 2) g.cam.dolly(n >= 3 ? 24 : 15, n >= 3 ? 1.7 : 1.2)
     g.score.parry(n)
     this.gainDivinity(6 + n * 8)
     this.perfectCount++

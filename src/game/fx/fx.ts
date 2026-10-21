@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { ParticlePool } from '../../engine/particles'
+import { clamp } from '../../engine/math'
 import { audio } from '../../audio/audio'
 import type { PostState } from '../post'
 import type { ScorchMap } from '../world/scorch'
@@ -380,7 +381,12 @@ export class Fx {
     }
     const d = p.distanceTo(this.host.camera.position)
     this.host.shake(Math.min(1, s * 0.12) * Math.max(0.15, 1 - d / (s * 30)), p)
-    if (s > 4 && d < s * 25) this.host.post.shock(p, this.host.camera, 0.012 + s * 0.002)
+    const post = this.host.post
+    if (s > 4 && d < s * 25) post.shock(p, this.host.camera, 0.012 + s * 0.002)
+    post.streak(Math.min(1.2, 0.1 + s * 0.04), p)
+    // heat shimmers over the burning ground; big blasts throw shafts of light (gentler when the fireball fills the view)
+    if (ground && s >= 4) post.haze(_p.copy(p).setY(gy + s * 0.3), s * 2.2, Math.min(1, 0.4 + s * 0.04), 2 + s * 0.12)
+    if (s >= 12) post.rays(p, Math.min(1.3, s / 40) * clamp(d / (s * 8), 0.35, 1), 0.7 + s * 0.015)
     if (opts.sound !== false) audio.explosion(p, s)
   }
 
@@ -420,6 +426,9 @@ export class Fx {
     this.bubble(p, 1.5 * s, '#ffd890', 0.3 + tier * 0.1, 1.2)
     this.light(p, '#fff0d0', 120 * s, 20 * s, 7)
     if (tier >= 2) this.ring(_p.copy(p).setY(this.gy(p.x, p.z) + 0.1), 14 * s, '#ffdf9a', 0.8, { thick: 0.08 })
+    // the lens flares and the blade throws brief shafts; kept low, the burst itself is already blinding
+    this.host.post.streak([0.3, 0.4, 0.5, 0.55][Math.min(3, tier)], p)
+    if (tier >= 3) this.host.post.rays(p, 0.35, 0.7, '#fff0d0')
     // a radial corona of sparks around the parry axis, and a spray back along it
     const gp = this.gpu
     const n = [200, 380, 560, 560][Math.min(3, tier)]
@@ -505,6 +514,12 @@ export class Fx {
     gp.emberDrift(_p.copy(p).setY(p.y + 30 * S), 7000, 170 * S, { rise: 14 * S, burst: 30 * S, life: 10, size: 1.8 * z, curl: 7 * S, color: EMBER, flat: 0.35, stagger: 2.5, bright: 1.4, wind: null })
     gp.glitter(p, 5000, 34 * S, 90 * S, WHITE_GOLD, { life: 9, size: 1.1 * z, rise: 34 * S, stagger: 5 })
     gp.groundSparks(p, 260 * S, 2600, FIRE, { size: 0.9 * z, life: 2.4 })
+    // shafts of light through everything in front of the fireball, the lens flares, heat shimmers over ground zero
+    const post = this.host.post
+    _p.copy(p).setY(p.y + 40 * S)
+    post.rays(_p, 1.2 + S * 1.2, 4)
+    post.streak(2.2, _p)
+    post.haze(_p.copy(p).setY(this.gy(p.x, p.z) + 6 * S), 110 * S, 1.3, 16)
     return cloud
   }
 

@@ -164,7 +164,7 @@ export class OrbitalBeam {
         g.fx.flare(this.point.clone().setY(2), 30, '#fff', 0.4)
         g.cam.addTrauma(0.5)
         g.post.flashTo(0.25, this.o.color, 4)
-        g.post.rays(this.point.clone().setY(3), 1, 1.2, this.o.coreColor ?? this.o.color)
+        g.post.rays(this.point.clone().setY(g.terrain.heightAt(this.point.x, this.point.z) + 3), 1, 1.2, this.o.coreColor ?? this.o.color)
         g.sky.flash(_v.subVectors(src, g.camera.position).normalize(), 0.6, this.o.color)
       }
       return

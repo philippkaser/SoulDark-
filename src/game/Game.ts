@@ -247,6 +247,10 @@ export class Game {
     this.post.impactFrames(k > 0.7 ? [2, 1, 2, 0] : [2, 0])
     this.post.kickZoom(0.05 + k * 0.08)
     this.post.flashTo(0.06 + k * 0.12, '#fff4dc', 5)
+    // light pours out of the opening cut, through the hero's silhouette
+    _v.copy(a).addScaledVector(fwd, 8 + k * 10).setY(this.terrain.heightAt(a.x, a.z) + 3 + k * 4)
+    this.post.rays(_v, 0.3 + k * 0.7, 0.6 + k * 0.9, '#ffe2b0')
+    this.post.streak(0.3 + k * 0.9, _v)
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
     audio.rumble(0.6 * k, 3)
