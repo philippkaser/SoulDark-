@@ -121,6 +121,11 @@ export class Titans implements System {
   private footfall(t: Titan, p: THREE.Vector3) {
     const g = this.game
     audio.titanStep(p)
+    // a mountain walking leaves footprints (under whichever foot is planted)
+    const fl = t.model.rig.footL.getWorldPosition(_a)
+    const fr = t.model.rig.footR.getWorldPosition(_b)
+    const foot = fl.y < fr.y ? fl : fr
+    g.terrain.crater(foot.x, foot.z, 2.8, 0.45, { rim: 0.35, ejecta: 0.2 })
     g.fx.dust(_v.copy(p).setY(0.5), 6, 4, 5)
     g.fx.ring(_v.copy(p).setY(0.1), 14, '#ffb070', 0.5, { thick: 0.1, alpha: 0.6 })
     const d = p.distanceTo(g.player.pos)
@@ -229,6 +234,7 @@ export class Titans implements System {
       life: 22,
       glow: 1.6,
       onCrash: (p, size) => {
+        g.terrain.crater(p.x, p.z, 10 + size * 0.25, 3.5, { ejecta: 1 })
         g.fx.explosion(p.setY(4), 16)
         g.fx.groundShock(p, size * 0.8)
         g.cam.addTrauma(0.9)
@@ -294,7 +300,7 @@ export class Titans implements System {
         t.ring += dt * 48
         if (!t.ringHit && t.ring >= dist - 1) {
           t.ringHit = true
-          if (pl.pos.y < 1.2 && !pl.untouchable) {
+          if (pl.altitude < 1.2 && !pl.untouchable) {
             const r = pl.defend('medium', _v.set(t.x, 0, t.z))
             if (r === 'none') {
               pl.hurt(120, _v.set(t.x, 0, t.z), 16)
@@ -344,6 +350,7 @@ export class Titans implements System {
       t.fired = true
       const line: Shape = { t: 'capsule', a: _a.clone(), b: _b.clone(), r: 3.2 }
       g.scorch.fissure(_a.x, _a.z, _b.x, _b.z, 2.2, 0.9)
+      g.terrain.trench(_a.x, _a.z, _b.x, _b.z, 6, 3)
       g.fx.groundShock(_b.clone(), 16, '#ff9a60')
       g.fx.explosion(_v.copy(_a).lerp(_b, 0.7).setY(1), 6, { scorch: false })
       g.cam.addTrauma(0.6)
@@ -351,7 +358,7 @@ export class Titans implements System {
       // does the blade meet the hero?
       const pd = Math.hypot(pl.pos.x - _a.x, pl.pos.z - _a.z)
       const onLine = shapeHitsCapsule(line, pl.pos, _v.copy(pl.pos).setY(pl.pos.y + 1.8), 0.5) && pd < reach + 2
-      if (onLine && pl.pos.y < 6) this.bladeMeetsHero(t, 260)
+      if (onLine && pl.altitude < 6) this.bladeMeetsHero(t, 260)
     }
     if (t.t >= 3.1) this.setAct(t, 'walk')
   }
@@ -370,7 +377,7 @@ export class Titans implements System {
       g.cam.addTrauma(0.4)
       // leap over it, parry it, or flash-step through it
       const dist = Math.hypot(pl.pos.x - t.x, pl.pos.z - t.z)
-      if (dist < 34 && pl.pos.y < 3.5 && Math.abs(angleDiff(t.yaw, face)) < 1.25) this.bladeMeetsHero(t, 200)
+      if (dist < 34 && pl.altitude < 3.5 && Math.abs(angleDiff(t.yaw, face)) < 1.25) this.bladeMeetsHero(t, 200)
     }
     if (t.t >= 2.5) this.setAct(t, 'walk')
   }
@@ -380,6 +387,7 @@ export class Titans implements System {
     if (!t.fired && t.t >= 1.12) {
       t.fired = true
       t.model.rig.footR.getWorldPosition(_v)
+      g.terrain.crater(_v.x, _v.z, 8, 2.2, { rim: 0.3, ejecta: 1 })
       g.fx.groundShock(_v.clone().setY(0), 40, '#ffb070')
       g.fx.explosion(_v.clone().setY(1), 5, { scorch: false })
       g.cam.addTrauma(0.6)
@@ -420,7 +428,8 @@ export class Titans implements System {
     const clip = t.act === 'walk' ? null : t.act
     t.avatar.update(dt, {
       x: t.x,
-      y: 0,
+      // wades down into craters (never up onto rims, so its footfalls keep landing)
+      y: Math.min(0.04, this.game.terrain.heightAt(t.x, t.z)),
       z: t.z,
       yaw: t.yaw,
       speed: t.speed,

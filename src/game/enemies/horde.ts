@@ -17,6 +17,8 @@ const enum St {
 export const SPEAR = 0
 export const ARCHER = 1
 
+/** How fast soldiers can climb out of a crater (m/s up the wall). */
+const CLIMB = 2.8
 const CELL = 3
 const GRID = 240 // cells per side (720 m)
 const HALF = (GRID * CELL) / 2
@@ -169,7 +171,7 @@ export class Horde implements System {
         const archer = o.type === ARCHER || (o.archers ?? 0) > 0 && r >= o.rows * (1 - (o.archers ?? 0))
         this.px[i] = x
         this.pz[i] = z
-        this.py[i] = 0
+        this.py[i] = this.game.terrain.heightAt(x, z)
         this.vx[i] = this.vy[i] = this.vz[i] = 0
         this.yaw[i] = face
         this.st[i] = St.March
@@ -201,13 +203,13 @@ export class Horde implements System {
       this.archersKilled++
     }
     this.killsThisFrame++
-    this.killAt.set(this.px[i], 1, this.pz[i])
+    this.killAt.set(this.px[i], this.py[i] + 1, this.pz[i])
     const vaporize = hit.kind === 'beam' || hit.kind === 'judgment' || (hit.kind === 'heaven' && Math.random() < 0.5)
     if (vaporize) {
       this.st[i] = St.Dying
       this.timer[i] = 0.7
       this.burn[i] = 1.4
-      if (Math.random() < 0.5) this.game.fx.vaporize(_p.set(this.px[i], 0, this.pz[i]), true)
+      if (Math.random() < 0.5) this.game.fx.vaporize(_p.set(this.px[i], this.py[i], this.pz[i]), true)
       return
     }
     // thrown: away from the blow, high into the air
@@ -225,13 +227,13 @@ export class Horde implements System {
     this.vx[i] = (dx / l) * pw
     this.vz[i] = (dz / l) * pw
     this.vy[i] = hit.power * (0.45 + Math.random() * 0.6) + 3
-    this.py[i] = Math.max(this.py[i], 0.2)
+    this.py[i] += 0.2
     this.spinX[i] = (Math.random() - 0.5) * 18
     this.spinZ[i] = (Math.random() - 0.5) * 18
     this.st[i] = St.Flying
     this.bounced[i] = 0
     this.burn[i] = hit.kind === 'blast' || hit.kind === 'slam' ? 0.6 : 0.25
-    if (Math.random() < 0.35) this.game.fx.vaporize(_p.set(this.px[i], 0, this.pz[i]), false)
+    if (Math.random() < 0.35) this.game.fx.vaporize(_p.set(this.px[i], this.py[i], this.pz[i]), false)
   }
 
   damage(shape: Shape, hit: Hit): number {
@@ -249,7 +251,7 @@ export class Horde implements System {
         while (i >= 0) {
           const nx = this.next[i]
           const s = this.st[i]
-          if ((s === St.March || s === St.Fight) && shapeHitsSphere(shape, this.px[i], 0.95, this.pz[i], 0.55)) {
+          if ((s === St.March || s === St.Fight) && shapeHitsSphere(shape, this.px[i], this.py[i] + 0.95, this.pz[i], 0.55)) {
             if (hit.dmg >= 40) {
               this.kill(i, hit, hx, hz)
               n++
@@ -266,7 +268,7 @@ export class Horde implements System {
   hitPoint(x: number, y: number, z: number, r: number, hit: Hit): boolean {
     const gx = Math.floor((x + HALF) / CELL)
     const gz = Math.floor((z + HALF) / CELL)
-    if (gx < 0 || gz < 0 || gx >= GRID || gz >= GRID || y > 2.2) return false
+    if (gx < 0 || gz < 0 || gx >= GRID || gz >= GRID || y > 8.2) return false
     for (let oz = -1; oz <= 1; oz++) {
       for (let ox = -1; ox <= 1; ox++) {
         const cx = gx + ox
@@ -275,7 +277,7 @@ export class Horde implements System {
         let i = this.head[cz * GRID + cx]
         while (i >= 0) {
           const s = this.st[i]
-          if ((s === St.March || s === St.Fight) && Math.hypot(this.px[i] - x, this.pz[i] - z) < r + 0.45) {
+          if ((s === St.March || s === St.Fight) && y - this.py[i] < 2.2 && y - this.py[i] > -1 && Math.hypot(this.px[i] - x, this.pz[i] - z) < r + 0.45) {
             this.kill(i, hit, x, z)
             return true
           }
@@ -291,7 +293,7 @@ export class Horde implements System {
     for (let i = 0; i < this.capacity && k < 80; i += 7) {
       const s = this.st[i]
       if (s === St.March || s === St.Fight) {
-        out.push(new THREE.Vector3(this.px[i], 1, this.pz[i]))
+        out.push(new THREE.Vector3(this.px[i], this.py[i] + 1, this.pz[i]))
         k++
       }
     }
@@ -299,7 +301,7 @@ export class Horde implements System {
 
   /** Is there an archer near enough to be the source of reflected arrows? */
   archerPos(i: number, out: THREE.Vector3) {
-    return out.set(this.px[i], 1.4, this.pz[i])
+    return out.set(this.px[i], this.py[i] + 1.4, this.pz[i])
   }
 
   isAliveArcher(i: number) {
@@ -326,6 +328,7 @@ export class Horde implements System {
     const ppx = pl.pos.x
     const ppz = pl.pos.z
     const hold = g.ceasefire || !pl.alive
+    const terrain = g.terrain
     this.rebuildGrid()
     const obstacles = g.obstacles()
 
@@ -389,6 +392,8 @@ export class Horde implements System {
           this.st[i] = St.Fight
         }
         if (hold) speed = 0
+        const x0 = this.px[i]
+        const z0 = this.pz[i]
         let mvx = tx * speed
         let mvz = tz * speed
         // separation from neighbours
@@ -433,6 +438,16 @@ export class Horde implements System {
             this.pz[i] = o.z + (oz / od) * rr
           }
         }
+        // stand on the terrain: crater walls are climbed slowly, drops are fallen into
+        let gy = terrain.heightAt(this.px[i], this.pz[i])
+        const rise = gy - this.py[i]
+        if (rise > CLIMB * dt) {
+          const f = (CLIMB * dt) / rise
+          this.px[i] = x0 + (this.px[i] - x0) * f
+          this.pz[i] = z0 + (this.pz[i] - z0) * f
+          gy = terrain.heightAt(this.px[i], this.pz[i])
+        }
+        this.py[i] = gy < this.py[i] ? Math.max(gy, this.py[i] - 16 * dt) : gy
         this.yaw[i] = turnToward(this.yaw[i], Math.atan2(dx, dz), 5 * dt)
         const moving = Math.hypot(mvx, mvz)
         this.phase[i] += moving * dt * 3.2
@@ -457,14 +472,15 @@ export class Horde implements System {
         this.rotZ[i] += this.spinZ[i] * dt
         this.phase[i] += dt * 6
         this.burn[i] = Math.max(0, this.burn[i] - dt * 0.6)
-        if (this.py[i] <= 0 && this.vy[i] < 0) {
-          this.py[i] = 0
+        const gy = terrain.heightAt(this.px[i], this.pz[i])
+        if (this.py[i] <= gy && this.vy[i] < 0) {
+          this.py[i] = gy
           if (!this.bounced[i] && this.vy[i] < -10) {
             this.bounced[i] = 1
             this.vy[i] *= -0.25
             this.vx[i] *= 0.4
             this.vz[i] *= 0.4
-            if (Math.random() < 0.25) g.fx.dust(_p.set(this.px[i], 0.2, this.pz[i]), 1, 0.6, 0.9)
+            if (Math.random() < 0.25) g.fx.dust(_p.set(this.px[i], gy + 0.2, this.pz[i]), 1, 0.6, 0.9)
           } else {
             this.st[i] = St.Dying
             this.timer[i] = 0.6

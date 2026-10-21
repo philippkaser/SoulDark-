@@ -264,7 +264,8 @@ export class Airships implements System {
     g.player.gainDivinity(14)
     audio.musicSting('big')
     const crash = (p: THREE.Vector3, size: number) => {
-      g.fx.explosion(p.setY(2), 10 + size * 0.1)
+      g.terrain.crater(p.x, p.z, 9 + size * 0.25, 3 + size * 0.04, { ejecta: 1 })
+      g.fx.explosion(p.setY(g.terrain.heightAt(p.x, p.z) + 2), 10 + size * 0.1)
       g.fx.after(0.3, () => g.fx.explosion(p.clone().add(new THREE.Vector3(8, 3, 4)), 7, { sound: false }))
       g.damage({ t: 'sphere', c: p, r: 22 }, { id: newHitId(), kind: 'blast', dmg: 500, power: 34, origin: p, friendly: true })
       g.cam.addTrauma(0.5)
@@ -295,7 +296,7 @@ export class Airships implements System {
         s.group.rotation.z += dt * 0.15
         if (Math.random() < dt * 3) g.fx.explosion(_w.copy(s.group.position).add(_v.set((Math.random() - 0.5) * 10, 0, (Math.random() - 0.5) * 30)), 2.5, { scorch: false, debris: false, sound: Math.random() < 0.3 })
         g.fx.smokeColumn(_w.copy(s.group.position), 1, 6, 3, 1.2, 0.06)
-        if (s.group.position.y < 6) {
+        if (s.group.position.y < g.terrain.heightAt(s.group.position.x, s.group.position.z) + 6) {
           s.falling = false
           s.group.visible = false
           ;(s.group.userData as { crash?: (p: THREE.Vector3, size: number) => void }).crash?.(s.group.position.clone(), 30)

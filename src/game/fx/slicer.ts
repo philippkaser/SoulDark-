@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { clonePatched, sdUniforms } from '../../engine/gfx/materials'
+import type { GroundSampler } from '../world/terrain'
 
 export interface SliceOpts {
   /** Gravity (m/s²) applied to free halves. */
@@ -65,6 +66,8 @@ export class Slicer {
   readonly root = new THREE.Group()
   private list: Sliced[] = []
   max = 10
+  /** Halves crash onto this when a slice gives no fixed ground height. */
+  ground: GroundSampler | null = null
 
   get count() {
     return this.list.length
@@ -178,8 +181,8 @@ export class Slicer {
       s.t += dt
       const o = s.opts
       const g = o.gravity ?? 30
-      const ground = o.ground ?? 0
       for (const h of s.halves) {
+        const ground = o.ground ?? this.ground?.heightAt(h.pivot.position.x, h.pivot.position.z) ?? 0
         if (!h.fixed && !h.crashed) {
           if (h.hinge) {
             // falls like a tree: accelerates as it leans
