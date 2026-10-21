@@ -96,6 +96,7 @@ export class Game {
       scorch: this.scorch,
       sky: this.sky,
       quality: this.q,
+      wind: this.wind,
       shake: (a, at) => {
         let k = 1
         if (at) k = Math.max(0.1, 1 - at.distanceTo(this.player.pos) / 260)
@@ -210,11 +211,14 @@ export class Game {
         const mid = p0.clone().lerp(p1, 0.5).setY(0.3)
         fx.debris.burst(mid, Math.round(2 + k * 4), 8 + k * 14, 0.12 + k * 0.18, 1, 1.4)
         fx.dust(mid, 2, 2 + k * 3, 2 + k * 3)
-        fx.spark(mid, new THREE.Vector3(0, 1, 0), 10, 14 + k * 14, [1, 0.7, 0.3])
+        fx.emberDrift(mid, 30 + k * 70, 1.5 + k * 3, { height: 1 + k * 4, rise: 2 + k * 3, burst: 2, life: 2.5 + k * 2 })
+        fx.glitter(mid, 14 + k * 50, 1 + k * 2, 2 + k * 8)
         const nf = Math.round(3 * this.q)
         for (let j = 0; j < nf; j++) fx.fire.spawn(mid, _v.set((Math.random() - 0.5) * 4, 6 + Math.random() * 14 * k, (Math.random() - 0.5) * 4), [1, 0.55, 0.2], 0.9, 1.5 + k * 2.5, 0.6, -2, 2, { grow: 1.2 })
       })
     }
+    // a wall of sparks erupts along the cut as it tears open
+    fx.sparkWall(a, b, 1200 + k * 3800, 18 + k * 46, undefined, 0.35)
     // a towering wave of light races down the line
     this.slashes.fire(_v.copy(a).setY(8 + k * 10), fwd, { width: 14 + k * 26, roll: Math.PI / 2, dmg: 0, speed: 420, life: len / 420 + 0.05, color: '#ffcf70', visualOnly: true })
     fx.flare(_v.copy(a).setY(1.5), 10 + k * 20, '#fff2d0', 0.4)
@@ -377,20 +381,7 @@ export class Game {
 
   /** The end of the world drifts by: embers rising, ash falling. */
   private ambience(dt: number) {
-    const c = this.camera.position
-    const dawn = this.sky.u.uDawn.value
-    const n = Math.floor(dt * 70 * this.q + Math.random())
-    for (let i = 0; i < n; i++) {
-      _v.set(c.x + (Math.random() - 0.5) * 70, c.y + (Math.random() - 0.4) * 22, c.z + (Math.random() - 0.5) * 70)
-      if (Math.random() < 0.45 * (1 - dawn)) {
-        _w.set(this.wind.x * 0.6 + (Math.random() - 0.5), 0.6 + Math.random() * 1.2, this.wind.z * 0.6 + (Math.random() - 0.5))
-        this.fx.glow.spawn(_v, _w, [1, 0.35 + Math.random() * 0.25, 0.08], 0.9, 0.035 + Math.random() * 0.04, 4 + Math.random() * 4, -0.05, 0.1)
-      } else {
-        _w.set(this.wind.x * 0.8, -0.5 - Math.random() * 0.4, this.wind.z * 0.8)
-        const gr = 0.18 + Math.random() * 0.12 + dawn * 0.5
-        this.fx.smoke.spawn(_v, _w, [gr, gr * 0.95, gr * 0.92], 0.7, 0.07 + Math.random() * 0.06, 6, 0, 0.05, { spin: 3, fadeIn: 0.2 })
-      }
-    }
+    this.fx.ambient(dt, this.camera.position, this.wind, this.sky.u.uDawn.value)
   }
 
   /** Blow everything around with a shockwave gust. */

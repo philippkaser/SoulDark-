@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -92,6 +92,7 @@ src/
     gfx/            patched materials (molten cut faces), noise, textures, PowerFX post effect
     geom.ts         attack shapes (sphere, capsule, sector, slab, ring) and their tests
     particles.ts    pooled additive points and lit, depth-sorted billboard smoke
+    gpuParticles.ts stateless GPU particles: closed-form motion on the world clock, ring-buffer uploads, streaks
   game/
     Game.ts         systems, damage routing, threats, reflect targeting, the frame loop
     create.ts       wires every system and the sandbox spawn table
@@ -101,7 +102,8 @@ src/
     player/         hero model, clips, controller, flying slashes
     enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
                     artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse
-    fx/             explosions, debris, afterimages, mushroom clouds, slicer
+    fx/             explosions, debris, afterimages, mushroom clouds, slicer,
+                    particleFx.ts: the spark / ember / mote vocabulary on the GPU pools
     world/          layout, sky, ground, scorch map, spires and mountains
     waves.ts        the eight trials
     director.ts     title attract mode, campaign/sandbox switching
