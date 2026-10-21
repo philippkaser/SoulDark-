@@ -43,8 +43,9 @@ vec3 mtnHorizon(vec3 d) {
 vec3 mtnAerial(vec3 col, vec3 wp, out float trans) {
   vec3 v = wp - cameraPosition;
   float D = length(v);
-  float dens = uHaze * (0.6 + 0.9 * exp(-max(wp.y, 0.0) / 80.0));
-  trans = exp(-D * dens);
+  // squared falloff (like the scene's FogExp2, but thinner): the near ring keeps its form, the far one is a pale layer
+  float k = D * uHaze;
+  trans = exp(-k * k * (0.7 + 0.8 * exp(-max(wp.y, 0.0) / 100.0)));
   vec3 sky = mtnHorizon(v / max(D, 1.0)) * mix(0.42, 0.6, uDawn);
   vec3 hz = mix(uFogColor, sky, smoothstep(-30.0, 320.0, wp.y));
   return mix(hz, col, trans);
@@ -334,11 +335,11 @@ void main() {
   vec3 albedo = mtnStrata(p, vUv.x * 0.7) * vec3(0.8, 0.72, 0.7);
   albedo *= 0.75 + 0.5 * gNoise(vUv * vec2(0.08, 0.02));
   // deep in the cut the walls shade each other: only the lips catch the eclipse
-  float lip = max(exp(-under / 14.0), exp(-vLip * 2.5));
+  float lip = max(exp(-under / 9.0), exp(-vLip * 4.0));
   vec3 col = albedo * mtnAmbient(n) * 0.7 + (mtnLight(albedo, n, v) - albedo * mtnAmbient(n)) * lip * 0.6;
-  // molten: the whole cut glows at first, then only the lips and a web of cracks stay hot
-  vec3 vor = gVoronoi(vUv * vec2(0.05, 0.03));
-  float crack = smoothstep(0.08, 0.0, vor.y - vor.x);
+  // molten: the whole cut glows at first, then only the lips and a few sinuous cracks stay hot
+  float cf = gNoise(vUv * vec2(0.035, 0.012)) + 0.4 * gNoise(vUv * vec2(0.1, 0.04) + 3.1);
+  float crack = (1.0 - smoothstep(0.0, fwidth(cf) * 1.5, abs(cf - 0.7))) * smoothstep(0.15, 0.04, fwidth(cf));
   float since = vSince;
   float hot = (2.2 * exp(-since * 1.1) + 0.5 * exp(-since / 7.0)) * (0.55 + 0.45 * gNoise(vUv * 0.06 + since * 0.3));
   hot += carveHeat(since) * (lip * 1.1 + crack * 0.7);

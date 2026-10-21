@@ -38,11 +38,10 @@ export function ringGeometry(ridge: Ridge, cols: number) {
   for (const x of OUTER_X) rows.push([1, x])
   const nr = rows.length
   const pos = new Float32Array((cols + 1) * nr * 3)
+  const col = { u: 0, H: 0, rc: 0, T: 0 }
   for (let i = 0; i <= cols; i++) {
     const a = ((i % cols) / cols) * TAU
-    const H = ridge.crestHeight(a)
-    const rc = ridge.crestRadius(a)
-    const T = ridge.crestHalf(a)
+    const { H, rc, T } = ridge.column(a, col)
     const wi = H / ridge.def.slopeIn
     const wo = H / ridge.def.slopeOut
     const sa = Math.sin(a)
@@ -53,7 +52,7 @@ export function ringGeometry(ridge: Ridge, cols: number) {
       const r = rc + d
       const k = (i * nr + j) * 3
       pos[k] = sa * r
-      pos[k + 1] = ridge.profile(r, a)
+      pos[k + 1] = ridge.profileAt(r, col)
       pos[k + 2] = ca * r
     }
   }
@@ -130,7 +129,7 @@ export class Mountains {
       uFogColor: { value: game.sky.fogColor },
       uDawn: game.sky.u.uDawn,
       uDoom: game.sky.u.uDoom,
-      uHaze: { value: 0.00062 },
+      uHaze: { value: 0.0006 },
       uTime: { value: 0 },
     }
     const carves = {
@@ -350,7 +349,7 @@ export class Mountains {
   update(dt: number, rdt: number) {
     this.common.uTime.value += dt
     // the air clears at dawn
-    this.common.uHaze.value = 0.00062 - 0.00022 * this.game.sky.u.uDawn.value
+    this.common.uHaze.value = 0.0006 - 0.00018 * this.game.sky.u.uDawn.value
     for (const b of this.bores) {
       if (b.radius <= 0) continue
       b.age += dt
@@ -499,8 +498,10 @@ export class Mountains {
       const sa = Math.sin(a)
       _q.copy(p).addScaledVector(_e1, ca * R * 1.05).addScaledVector(_e2, sa * R * 1.05)
       this.outOfRock(_q, back, 4, R * 3)
-      _v.copy(back).multiplyScalar(rnd(12, 40)).addScaledVector(_e1, ca * rnd(14, 34)).addScaledVector(_e2, sa * rnd(14, 34))
-      this.billows.spawn(_q, _v, rnd(22, 40), rnd(16, 26), { grow: 0.8, alpha: 0.9, heat: rnd(0.4, 1.2), cool: 0.3, dark: rnd(0.25, 0.65), drag: 0.45, flow: true })
+      // spilling sideways and down, not toward the eye, so the hole clears in a few seconds
+      _v.copy(back).multiplyScalar(rnd(4, 14)).addScaledVector(_e1, ca * rnd(22, 48)).addScaledVector(_e2, sa * rnd(22, 48))
+      _v.y -= 6
+      this.billows.spawn(_q, _v, rnd(20, 36), rnd(11, 18), { grow: 0.75, alpha: 0.8, heat: rnd(0.4, 1.2), cool: 0.35, dark: rnd(0.25, 0.65), drag: 0.4, flow: true })
     }
     this.thunder(p, R / 60, 'bore')
   }

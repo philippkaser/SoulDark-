@@ -107,6 +107,15 @@ export interface RayHit {
 
 const _hit: RayHit = { tIn: 0, tOut: 0 }
 
+/** Per-azimuth values of the profile. */
+export interface Column {
+  u: number
+  H: number
+  rc: number
+  T: number
+}
+const _col: Column = { u: 0, H: 0, rc: 0, T: 0 }
+
 export class Ridge {
   readonly def: RingDef
   /** Radial extent of the ring (and of its lookup table). */
@@ -131,10 +140,20 @@ export class Ridge {
     this.rMin = def.radius - def.meander - def.crest * 1.4 - (top / def.slopeIn) * SKIRT - 8
     this.rMax = def.radius + def.meander + def.crest * 1.4 + (top / def.slopeOut) * SKIRT + 8
     this.table = new Float32Array(TABLE_A * TABLE_R)
-    for (let j = 0; j < TABLE_R; j++) {
-      const r = this.rMin + ((this.rMax - this.rMin) * j) / (TABLE_R - 1)
-      for (let i = 0; i < TABLE_A; i++) this.table[j * TABLE_A + i] = this.profile(r, (i / TABLE_A) * TAU)
+    const col: Column = { u: 0, H: 0, rc: 0, T: 0 }
+    for (let i = 0; i < TABLE_A; i++) {
+      this.column((i / TABLE_A) * TAU, col)
+      for (let j = 0; j < TABLE_R; j++) this.table[j * TABLE_A + i] = this.profileAt(this.rMin + ((this.rMax - this.rMin) * j) / (TABLE_R - 1), col)
     }
+  }
+
+  /** Everything about azimuth a that the profile needs (computed once per column). */
+  column(a: number, out: Column = { u: 0, H: 0, rc: 0, T: 0 }) {
+    out.u = wrap01(a / TAU)
+    out.H = this.crestHeight(a)
+    out.rc = this.crestRadius(a)
+    out.T = this.crestHalf(a)
+    return out
   }
 
   /** Crest height at azimuth a (radians; a = atan2(x, z), the old horizon band's convention). */
@@ -165,12 +184,16 @@ export class Ridge {
 
   /** The analytic height (the mesh samples this; everything else reads the table). */
   profile(r: number, a: number) {
+    return this.profileAt(r, this.column(a, _col))
+  }
+
+  profileAt(r: number, c: Column) {
     const def = this.def
-    const u = wrap01(a / TAU)
-    const H = this.crestHeight(a)
-    const d = r - this.crestRadius(a)
+    const u = c.u
+    const H = c.H
+    const d = r - c.rc
     const W = H / (d > 0 ? def.slopeOut : def.slopeIn)
-    const x = (Math.abs(d) - this.crestHalf(a)) / W
+    const x = (Math.abs(d) - c.T) / W
     if (x >= SKIRT) return RIDGE_FLOOR
     // a cliff with a rounded shoulder and a short talus apron
     let p = 1
