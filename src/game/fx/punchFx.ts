@@ -86,11 +86,17 @@ function vaporMat() {
       varying vec3 vN;
       varying vec3 vView;
       varying vec2 vUv;
+      varying float vSide;
       void main() {
         vUv = uv;
         vec4 wp = modelMatrix * vec4(position, 1.0);
         vN = normalize(mat3(modelMatrix) * normal);
         vView = normalize(cameraPosition - wp.xyz);
+        // a cone seen down its own axis is a white disc over the hero: it only shows from the side
+        vec3 axis = normalize((modelMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+        vec3 toCam = normalize(cameraPosition - modelMatrix[3].xyz);
+        float r = length(modelMatrix[0].xyz);
+        vSide = (1.0 - smoothstep(0.55, 0.9, abs(dot(toCam, axis)))) * smoothstep(r * 1.5 + 1.0, r * 3.0 + 4.0, length(cameraPosition - modelMatrix[3].xyz));
         gl_Position = projectionMatrix * viewMatrix * wp;
       }`,
     fragmentShader: /* glsl */ `
@@ -101,14 +107,16 @@ function vaporMat() {
       varying vec3 vN;
       varying vec3 vView;
       varying vec2 vUv;
+      varying float vSide;
       ${NOISE3}
       void main() {
-        // thin where seen face-on, dense along the silhouette
+        // a thin shell: only its silhouette shows, combed into streaks that trail off the fist
         float f = 1.0 - abs(dot(normalize(vN), vView));
-        float n = fbm3(vec3(vUv.x * 9.0, vUv.y * 3.0 - uAge * 6.0, uSeed));
-        // densest at the apex (uv.y = 1), torn into wisps toward the open end
-        float along = smoothstep(0.0, 0.7, vUv.y);
-        float v = (0.25 + 0.75 * f * f) * smoothstep(0.25, 0.75, n + along * 0.35) * along;
+        float streak = fbm3(vec3(vUv.x * 40.0, vUv.y * 2.0 - uAge * 8.0, uSeed));
+        float wisp = smoothstep(0.42, 0.8, streak);
+        // brightest just behind the apex (uv.y = 1), torn away toward the open end
+        float along = smoothstep(0.0, 0.75, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
+        float v = pow(f, 3.0) * (0.35 + 0.65 * wisp) * along * vSide;
         gl_FragColor = vec4(uColor * v * uAlpha, 1.0);
       }`,
     transparent: true,
