@@ -511,7 +511,8 @@ export class Punch implements System {
   tick(dt: number, f: InputFrame, enabled: boolean) {
     this.cd -= dt
     // a cutscene can take the hero out of the coil without a state change of ours
-    if (this.charging && this.g.player.state !== 'scharge') this.cancel()
+    const st = this.g.player.state
+    if (this.charging && st !== 'scharge' && st !== 'spunch') this.cancel()
     if (!this.charging) this.fx.placeGlow(_fist, 0, 0)
     const live = this.shotLive
     this.shotLive = false
