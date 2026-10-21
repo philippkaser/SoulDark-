@@ -271,6 +271,7 @@ export class Eclipse implements System {
       life: 26,
       glow: 3,
       onCrash: (p) => {
+        g.terrain.crater(p.x, p.z, 60, 14, { rim: 0.3, ejecta: 1, jag: 0.12 })
         g.fx.nuke(p.setY(0), 0.8)
         g.cam.addTrauma(0.8)
         audio.nukeShock()
@@ -317,7 +318,7 @@ export class Eclipse implements System {
       frame: (t, pos, look) => {
         // rise
         const rise = smoothstep(0.8, 2.6, t) * (1 - smoothstep(5.5, 10, t))
-        pl.pos.set(start.x, rise * 260, start.z)
+        pl.pos.set(start.x, start.y + rise * 260, start.z)
         pl.cineT = t
         pl.cineClip = t < 0.8 ? 'iai' : t < 2.4 ? 'dive' : t < 3.4 ? 'slash4' : t < 9.5 ? 'fall' : 'victory'
         if (t > 2.4) pl.cineT = t - 2.4
@@ -415,7 +416,7 @@ export class Eclipse implements System {
         if (this.t > 3 && this.t - dt <= 3) g.fx.ring(g.player.pos.clone().setY(0.1), 200, '#fff2d0', 4, { thick: 0.05 })
         if (this.t > 9.5 && this.t - dt <= 9.5) {
           const pl = g.player
-          pl.pos.y = 0
+          pl.pos.y = g.terrain.heightAt(pl.pos.x, pl.pos.z)
           pl.state = 'victory'
           pl.t = 0
           g.fx.groundShock(pl.pos.clone(), 18, '#fff0c0', false)
@@ -489,6 +490,8 @@ export class Eclipse implements System {
       this.moonActive = false
       this.moonDone = true
       m.visible = false
+      // it lands: a crater a hundred and fifty metres across, with the hero at the bottom
+      g.terrain.crater(pl.pos.x, pl.pos.z, 75, 14, { rim: 0.32, ejecta: 1, jag: 0.12 })
       g.fx.nuke(pl.pos.clone(), 0.7)
       g.post.flashTo(1, '#fff2e0', 0.7)
       if (!pl.untouchable) pl.hurt(r === 'guard' ? 450 : 850, m.position, 30)

@@ -146,7 +146,17 @@ export class Lance implements System {
     g.post.streak(1.8)
     g.cam.addTrauma(0.5)
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(1, 0.2, 0.3).normalize(), p)
-    g.slicer.slice([this.station], plane, { gravity: 8, separate: 25, spin: 0.4, life: 18, glow: 2, onCrash: (at) => g.fx.explosion(at.setY(10), 30) })
+    g.slicer.slice([this.station], plane, {
+      gravity: 8,
+      separate: 25,
+      spin: 0.4,
+      life: 18,
+      glow: 2,
+      onCrash: (at) => {
+        g.terrain.crater(at.x, at.z, 32, 9, { rim: 0.3, ejecta: 1 })
+        g.fx.explosion(at.setY(10), 30)
+      },
+    })
     g.score.kill('station', 1, p)
     g.player.gainDivinity(40)
     audio.musicSting('big')

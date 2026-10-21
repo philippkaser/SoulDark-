@@ -281,14 +281,15 @@ export class Projectiles implements System {
     this.root.remove(p.mesh)
   }
 
-  /** Blow it up. `byHero` explosions don't hurt the hero. */
-  private detonate(p: Proj, at: THREE.Vector3, byHero: boolean) {
+  /** Blow it up. `byHero` explosions don't hurt the hero. `ground`: it struck the terrain and leaves a crater. */
+  private detonate(p: Proj, at: THREE.Vector3, byHero: boolean, ground = false) {
     const g = this.game
     this.remove(p)
     if (p.kind === 'nuke') {
       this.nukeBlast(at, byHero)
       return
     }
+    if (ground) g.terrain.crater(at.x, at.z, p.spec.boom * (p.kind === 'meteor' ? 1.5 : 0.95), p.spec.boom * (p.kind === 'meteor' ? 0.42 : 0.3), { ejecta: p.kind === 'meteor' ? 1 : 0.5 })
     g.fx.explosion(at, p.spec.boom)
     g.damage({ t: 'sphere', c: at, r: p.spec.blast }, { id: newHitId(), kind: 'blast', dmg: 300, power: 26, origin: at, friendly: byHero })
     if (!byHero) {
@@ -301,6 +302,7 @@ export class Projectiles implements System {
     const g = this.game
     const far = at.distanceTo(g.player.pos) > 200
     const scale = far ? 1 : 0.45
+    if (at.y - g.terrain.heightAt(at.x, at.z) < 70) g.terrain.crater(at.x, at.z, far ? 90 : 46, far ? 14 : 12, { rim: 0.3, ejecta: 1, jag: 0.12 })
     g.fx.nuke(at.clone().setY(Math.max(0, at.y - 10)), scale)
     g.post.flashTo(far ? 1 : 1.2, '#fff8ec', far ? 0.9 : 0.6)
     g.post.impactFrames([1, 2, 1, 2, 1, 0], 1 / 18)
@@ -426,9 +428,10 @@ export class Projectiles implements System {
         }
       }
       // the ground
-      if (p.pos.y <= spec.radius * 0.5 && !(p.kind === 'nuke' && p.phase < 2)) {
-        _v.copy(p.pos).setY(0.5)
-        this.detonate(p, _v, p.reflected)
+      const gy = g.terrain.heightAt(p.pos.x, p.pos.z)
+      if (p.pos.y <= gy + spec.radius * 0.5 && !(p.kind === 'nuke' && p.phase < 2)) {
+        _v.copy(p.pos).setY(gy + 0.5)
+        this.detonate(p, _v, p.reflected, true)
       }
     }
     this.list = this.list.filter((p) => p.alive)
@@ -462,7 +465,9 @@ export class Projectiles implements System {
         return
       }
       if (p.kind === 'meteor') {
+        // held off by the blade: the ground under the hero gives way instead
         this.detonate(p, _v.copy(p.pos), true)
+        g.terrain.crater(pl.pos.x, pl.pos.z, p.spec.boom * 1.2, p.spec.boom * 0.3, { ejecta: 1 })
         pl.hurt(p.spec.dmg * 0.25, p.pos, 10)
         return
       }
@@ -480,7 +485,7 @@ export class Projectiles implements System {
       return
     }
     pl.hurt(p.spec.dmg, p.pos, p.kind === 'meteor' ? 18 : 10)
-    this.detonate(p, _v.copy(p.pos), true)
+    this.detonate(p, _v.copy(p.pos), true, p.kind === 'meteor')
   }
 
   private steerIncoming(p: Proj, dt: number, chest: THREE.Vector3) {

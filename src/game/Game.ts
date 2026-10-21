@@ -18,6 +18,7 @@ import { FOG_COLOR, SUN_DIR } from './world/layout'
 import { Props } from './world/props'
 import { ScorchMap } from './world/scorch'
 import { Sky } from './world/sky'
+import { Terrain } from './world/terrain'
 
 /** A gameplay system that plugs into the frame loop. */
 export interface System {
@@ -58,6 +59,8 @@ export class Game {
   readonly cam = new CameraRig()
   readonly sky = new Sky()
   readonly scorch = new ScorchMap()
+  /** The deformable ground: craters, trenches, heightAt for anything that stands on it. */
+  readonly terrain: Terrain
   readonly fx: Fx
   readonly slicer = new Slicer()
   readonly props: Props
@@ -68,7 +71,7 @@ export class Game {
   private windGust = new THREE.Vector3()
   readonly sun: THREE.DirectionalLight
   readonly fill: THREE.HemisphereLight
-  private ground: THREE.Mesh
+  private ground: THREE.Object3D
   private systems: System[] = []
   private damageables: Damageable[] = []
   mode: GameMode = 'title'
@@ -90,12 +93,14 @@ export class Game {
     this.quality = quality
     this.q = quality === 'high' ? 1 : quality === 'medium' ? 0.75 : 0.5
     this.camera = camera
+    this.terrain = new Terrain(quality === 'low' ? 256 : 512)
     this.fx = new Fx({
       camera,
       post: this.post,
       scorch: this.scorch,
       sky: this.sky,
       quality: this.q,
+      wind: this.wind,
       shake: (a, at) => {
         let k = 1
         if (at) k = Math.max(0.1, 1 - at.distanceTo(this.player.pos) / 260)
@@ -105,7 +110,19 @@ export class Game {
     this.player = new Player(this)
     this.slashes = new Slashes(this)
     this.props = new Props(this)
-    this.ground = buildGround(this.scorch, quality)
+    this.ground = buildGround(this.scorch, this.terrain, quality)
+    // everything that touches the ground finds the terrain
+    this.fx.debris.ground = this.terrain
+    this.fx.ground = this.terrain
+    this.fx.gpu.light.setGround(this.terrain.tex, this.terrain.half)
+    this.fx.gpu.soft.setGround(this.terrain.tex, this.terrain.half)
+    this.slicer.ground = this.terrain
+    this.cam.ground = this.terrain
+    for (const pool of [this.fx.smoke, this.fx.fire]) {
+      if (!pool.uniforms.uTerrain) continue
+      pool.uniforms.uTerrain.value = this.terrain.tex
+      pool.uniforms.uTerrainHalf.value = this.terrain.half
+    }
     this.fx.ghosts.bind(this.player.model)
 
     // light: the eclipse's corona from the north, a bruised sky above
@@ -199,6 +216,7 @@ export class Game {
     const fx = this.fx
     const len = a.distanceTo(b)
     const steps = Math.ceil(len / 6)
+    const seed = (Math.random() * 1e6) | 0
     // the fissure tears open along the line, outrunning sound
     for (let i = 0; i < steps; i++) {
       const t0 = i / steps
@@ -207,14 +225,18 @@ export class Game {
         const p0 = _v.lerpVectors(a, b, t0).clone()
         const p1 = _w.lerpVectors(a, b, t1).clone()
         this.scorch.fissure(p0.x, p0.z, p1.x, p1.z, 0.8 + k * 1.6, 1)
+        this.terrain.trench(a.x, a.z, b.x, b.z, 3 + k * 9, 1.5 + k * 10, { seed, from: t0, to: t1 })
         const mid = p0.clone().lerp(p1, 0.5).setY(0.3)
         fx.debris.burst(mid, Math.round(2 + k * 4), 8 + k * 14, 0.12 + k * 0.18, 1, 1.4)
         fx.dust(mid, 2, 2 + k * 3, 2 + k * 3)
-        fx.spark(mid, new THREE.Vector3(0, 1, 0), 10, 14 + k * 14, [1, 0.7, 0.3])
+        fx.emberDrift(mid, 30 + k * 70, 1.5 + k * 3, { height: 1 + k * 4, rise: 2 + k * 3, burst: 2, life: 2.5 + k * 2 })
+        fx.glitter(mid, 14 + k * 50, 1 + k * 2, 2 + k * 8)
         const nf = Math.round(3 * this.q)
         for (let j = 0; j < nf; j++) fx.fire.spawn(mid, _v.set((Math.random() - 0.5) * 4, 6 + Math.random() * 14 * k, (Math.random() - 0.5) * 4), [1, 0.55, 0.2], 0.9, 1.5 + k * 2.5, 0.6, -2, 2, { grow: 1.2 })
       })
     }
+    // a wall of sparks erupts along the cut as it tears open
+    fx.sparkWall(a, b, 1200 + k * 3800, 18 + k * 46, undefined, 0.35)
     // a towering wave of light races down the line
     this.slashes.fire(_v.copy(a).setY(8 + k * 10), fwd, { width: 14 + k * 26, roll: Math.PI / 2, dmg: 0, speed: 420, life: len / 420 + 0.05, color: '#ffcf70', visualOnly: true })
     fx.flare(_v.copy(a).setY(1.5), 10 + k * 20, '#fff2d0', 0.4)
@@ -274,6 +296,7 @@ export class Game {
     this.post.reset()
     this.sky.reset()
     this.scorch.clear()
+    this.terrain.reset()
     this.fx.clear()
     this.slicer.clear()
     this.slashes.clear()
@@ -327,6 +350,7 @@ export class Game {
     this.slicer.update(wdt)
     this.props.root.updateMatrixWorld()
     this.scorch.update(rdt)
+    this.terrain.update(rdt)
     this.score.update(rdt)
 
     // camera
@@ -377,20 +401,7 @@ export class Game {
 
   /** The end of the world drifts by: embers rising, ash falling. */
   private ambience(dt: number) {
-    const c = this.camera.position
-    const dawn = this.sky.u.uDawn.value
-    const n = Math.floor(dt * 70 * this.q + Math.random())
-    for (let i = 0; i < n; i++) {
-      _v.set(c.x + (Math.random() - 0.5) * 70, c.y + (Math.random() - 0.4) * 22, c.z + (Math.random() - 0.5) * 70)
-      if (Math.random() < 0.45 * (1 - dawn)) {
-        _w.set(this.wind.x * 0.6 + (Math.random() - 0.5), 0.6 + Math.random() * 1.2, this.wind.z * 0.6 + (Math.random() - 0.5))
-        this.fx.glow.spawn(_v, _w, [1, 0.35 + Math.random() * 0.25, 0.08], 0.9, 0.035 + Math.random() * 0.04, 4 + Math.random() * 4, -0.05, 0.1)
-      } else {
-        _w.set(this.wind.x * 0.8, -0.5 - Math.random() * 0.4, this.wind.z * 0.8)
-        const gr = 0.18 + Math.random() * 0.12 + dawn * 0.5
-        this.fx.smoke.spawn(_v, _w, [gr, gr * 0.95, gr * 0.92], 0.7, 0.07 + Math.random() * 0.06, 6, 0, 0.05, { spin: 3, fadeIn: 0.2 })
-      }
-    }
+    this.fx.ambient(dt, this.camera.position, this.wind, this.sky.u.uDawn.value)
   }
 
   /** Blow everything around with a shockwave gust. */

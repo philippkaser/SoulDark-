@@ -51,6 +51,8 @@ export const quadVert = /* glsl */ `
 attribute vec3 iPos;
 attribute vec4 iColor;
 attribute vec4 iParams; // size, rotation, heat, seed
+uniform sampler2D uTerrain;
+uniform float uTerrainHalf;
 varying vec4 vColor;
 varying vec2 vUv;
 varying float vHeat;
@@ -64,8 +66,9 @@ void main() {
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 world = (modelMatrix * vec4(iPos, 1.0)).xyz + (right * c.x + up * c.y) * iParams.x;
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
-  // soft contact with the ground plane instead of a hard cut
-  vGround = clamp(world.y / (iParams.x * 0.35 + 0.05), 0.0, 1.0);
+  // soft contact with the ground (a heightfield, flat when none is bound) instead of a hard cut
+  float gy = textureLod(uTerrain, clamp(world.xz / (2.0 * uTerrainHalf) + 0.5, 0.0, 1.0), 0.0).r;
+  vGround = clamp((world.y - gy) / (iParams.x * 0.35 + 0.05), 0.0, 1.0);
   vColor = iColor;
   vUv = position.xy * 2.0;
   vHeat = iParams.z;
@@ -102,6 +105,10 @@ void main() {
   gl_FragColor = vec4(lit + hot, a);
 }
 `
+
+/** Stand-in heightfield (flat) until a terrain texture is bound to uTerrain. */
+const FLAT = new THREE.DataTexture(new Uint8Array(4), 1, 1)
+FLAT.needsUpdate = true
 
 export class ParticlePool {
   readonly object: THREE.Object3D
@@ -199,6 +206,8 @@ export class ParticlePool {
         uAmbient: { value: new THREE.Color(0.42, 0.4, 0.44) },
         uHot: { value: new THREE.Color(1.0, 0.45, 0.12) },
         uLit: { value: 1 },
+        uTerrain: { value: FLAT },
+        uTerrainHalf: { value: 260 },
       }
       const mat = new THREE.ShaderMaterial({
         vertexShader: quadVert,

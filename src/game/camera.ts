@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { clamp, damp } from '../engine/math'
+import type { GroundSampler } from './world/terrain'
 
 /** A scripted camera move. `frame` writes position + look target and returns the FOV. */
 export interface Shot {
@@ -77,6 +78,9 @@ export class CameraRig {
   private dollyDeg = 0
   private dollyT = 0
   private dollyDur = 0
+  /** The terrain: the camera stays above it and the aim ray lands on it (flat y = 0 when unset). */
+  ground: GroundSampler | null = null
+  private lift = 0
 
   snap(pos: THREE.Vector3, yaw: number) {
     this.yaw = yaw
@@ -168,9 +172,24 @@ export class CameraRig {
     const shoulder = 0.75
     _gl.copy(this.focus).addScaledVector(_right, shoulder)
     _gp.copy(_gl).addScaledVector(_dir, -this.dist)
-    _gp.y = Math.max(0.45, _gp.y)
+    const floor = (this.ground ? this.ground.heightAt(_gp.x, _gp.z) : 0) + 0.45
+    _gp.y = Math.max(floor, _gp.y)
     // when looking up, keep the camera low behind the hero
-    if (this.pitch < 0) _gp.y = Math.max(0.45, _gp.y + this.pitch * 1.5)
+    if (this.pitch < 0) _gp.y = Math.max(floor, _gp.y + this.pitch * 1.5)
+    // in a crater or a canyon: rise until the line to the hero clears the rim
+    if (this.ground) {
+      let lift = 0
+      // sight line from the hero's knees, so the whole body stays in view
+      const ky = _gl.y - 1.2
+      for (let i = 0; i < 5; i++) {
+        const t = 0.4 + i * 0.15
+        const h = this.ground.heightAt(_gl.x + (_gp.x - _gl.x) * t, _gl.z + (_gp.z - _gl.z) * t) + 0.5
+        const y = ky + (_gp.y - ky) * t
+        if (h > y) lift = Math.max(lift, (h - y) / t)
+      }
+      this.lift += (lift - this.lift) * (this.ready ? damp(lift > this.lift ? 14 : 3, rdt) : 1)
+      _gp.y += this.lift
+    }
     let fov = 62 + this.fovKick
 
     // cinematic override (with blends)
@@ -180,7 +199,7 @@ export class CameraRig {
       // a shot may end itself from inside its own frame
       const sf = shot.frame(this.shotT, _sp, _sl)
       // never film from under the ground
-      _sp.y = Math.max(_sp.y, 1.2)
+      _sp.y = Math.max(_sp.y, (this.ground ? this.ground.heightAt(_sp.x, _sp.z) : 0) + 1.2)
       const kin = shot.blendIn > 0 ? clamp(this.shotT / shot.blendIn, 0, 1) : 1
       const k = kin * kin * (3 - 2 * kin)
       _gp.lerp(_sp, k)
@@ -240,12 +259,36 @@ export class CameraRig {
     this.aimOrigin.copy(cam.position)
     cam.getWorldDirection(this.aimDir)
     const far = 420
-    if (this.aimDir.y < -0.01) {
+    if (this.ground) {
+      this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, this.groundHit(this.aimOrigin, this.aimDir, far, this.ground))
+    } else if (this.aimDir.y < -0.01) {
       const tHit = -this.aimOrigin.y / this.aimDir.y
       this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, Math.min(far, tHit))
     } else {
       this.aimPoint.copy(this.aimOrigin).addScaledVector(this.aimDir, far)
     }
+  }
+
+  /** Distance along a ray to the terrain (march, then bisect), or `far`. */
+  private groundHit(o: THREE.Vector3, d: THREE.Vector3, far: number, ground: GroundSampler) {
+    const above = (t: number) => o.y + d.y * t - ground.heightAt(o.x + d.x * t, o.z + d.z * t)
+    let t0 = 0
+    let t = 0
+    while (t < far) {
+      t = Math.min(far, t + 0.5 + t * 0.03)
+      if (above(t) < 0) {
+        for (let i = 0; i < 8; i++) {
+          const m = (t0 + t) / 2
+          if (above(m) < 0) t = m
+          else t0 = m
+        }
+        return t
+      }
+      // rising above anything the terrain can reach: no hit
+      if (d.y >= 0 && o.y + d.y * t > 8) break
+      t0 = t
+    }
+    return far
   }
 
   /** Horizontal yaw the camera is facing. */

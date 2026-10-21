@@ -48,6 +48,8 @@ export interface AvatarState {
   windZ?: number
   /** Simulation step for cloth (lets cloth keep moving in slow motion). */
   clothDt?: number
+  /** Ground height the cloth rests on (default 0). */
+  floor?: number
 }
 
 const _base = new THREE.Vector3()
@@ -116,7 +118,7 @@ export class Avatar {
     rig.root.updateMatrixWorld(true)
 
     const cdt = st.clothDt ?? dt
-    for (const c of m.capes) c.update(cdt, st.windX ?? 1.2, st.windZ ?? -0.6)
+    for (const c of m.capes) c.update(cdt, st.windX ?? 1.2, st.windZ ?? -0.6, st.floor ?? 0)
 
     if (m.trail) {
       m.swordBase.getWorldPosition(_base)

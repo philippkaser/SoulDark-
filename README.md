@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -72,6 +72,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 **Destruction**
 - A real-time slicer: meshes are cloned into two halves clipped by the cut plane, the cut faces glow molten, and the halves topple, slide or tumble, crash and dissolve. Spires, cannons, airships, the Colossus (its posed skin is baked to static geometry first), the Sol Lance station and the moon can all be cut
 - A scorch map: craters, fissures and beam trails burn into the ground and cool over time
+- Deformable terrain: a heightfield the hero's power carves for real. Meteor-dive slams leave craters that grow with the fall, the Heaven Splitter tears a canyon to the horizon, shells, meteors, crashing airships and the Colossus's sword gouge the plain, the Sol Lance bores molten grooves, and a nuke or the moon leaves a bowl a hundred metres across. Crater walls turn to fractured, stratified rock; the hero, the legion, arrows, rubble, smoke and the camera all follow the ground
 - An instanced horde of up to 2,200 soldiers in one draw call, animated in the vertex shader, flung, sliced and vaporized
 - Procedural mushroom clouds with a rolling toroidal cap, stem, base surge and condensation ring; shockwaves that travel at a visible speed and flatten everything in their band
 
@@ -92,6 +93,7 @@ src/
     gfx/            patched materials (molten cut faces), noise, textures, PowerFX post effect
     geom.ts         attack shapes (sphere, capsule, sector, slab, ring) and their tests
     particles.ts    pooled additive points and lit, depth-sorted billboard smoke
+    gpuParticles.ts stateless GPU particles: closed-form motion on the world clock, ring-buffer uploads, streaks
   game/
     Game.ts         systems, damage routing, threats, reflect targeting, the frame loop
     create.ts       wires every system and the sandbox spawn table
@@ -101,8 +103,9 @@ src/
     player/         hero model, clips, controller, flying slashes
     enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
                     artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse
-    fx/             explosions, debris, afterimages, mushroom clouds, slicer
-    world/          layout, sky, ground, scorch map, spires and mountains
+    fx/             explosions, debris, afterimages, mushroom clouds, slicer,
+                    particleFx.ts: the spark / ember / mote vocabulary on the GPU pools
+    world/          layout, sky, ground, scorch map, terrain heightfield, spires and mountains
     waves.ts        the eight trials
     director.ts     title attract mode, campaign/sandbox switching
     score.ts        style ranks, combo, feed, tally
