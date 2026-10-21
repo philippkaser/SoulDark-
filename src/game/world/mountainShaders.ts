@@ -64,9 +64,10 @@ vec3 mtnLight(vec3 albedo, vec3 n, vec3 v) {
   float ndl = dot(n, uSunDir);
   float wrap = clamp((ndl + 0.3) / 1.3, 0.0, 1.0);
   float back = pow(max(dot(-v, uSunDir), 0.0), 3.0);
-  float fres = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 4.0);
+  float fres = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0);
   vec3 col = albedo * (mtnAmbient(n) + mtnSun() * wrap * wrap);
-  col += mix(vec3(1.0, 0.36, 0.12), vec3(1.0, 0.8, 0.55), uDawn) * fres * (0.04 + 0.9 * back) * smoothstep(-0.2, 0.5, n.y);
+  // the corona behind the ridge sets its silhouette alight
+  col += mix(vec3(1.0, 0.36, 0.12), vec3(1.0, 0.8, 0.55), uDawn) * fres * (0.03 + 1.3 * back) * smoothstep(-0.1, 0.5, n.y);
   return col;
 }
 
