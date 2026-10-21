@@ -113,7 +113,80 @@ const tremble = (amp: number) => (out: Pose, t: number) => {
   out[S.rootY] += Math.sin(t * 38) * amp * 0.3
 }
 
+// the free (left) hand throws the punches; the sword hand trails low and out of the way
+const FIST_FWD: PoseSpec = { bladeL: [0, 0.05, 1], edgeL: [0, 1, 0] }
+const SWORD_BACK: PoseSpec = { handR: [-0.34, -0.22, -0.12], bladeR: [-0.35, -0.55, -1], edgeR: [0, 1, 0], poleR: [-0.8, -0.3, -0.3] }
+
+/** Left jab: a flick of the shoulder, the whole body in behind it. */
+const jab: ClipDef = {
+  dur: 0.34,
+  keys: [
+    [0.03, { ...FIST_FWD, ...SWORD_BACK, handL: [0.24, 0.0, 0.02], poleL: [0.8, -0.5, -0.3], chestY: 0.2, spineX: 0.1, rootY: -0.06 }],
+    [0.06, { ...FIST_FWD, handL: [0.07, 0.15, 0.56], poleL: [0.6, -0.7, 0], chestY: -0.5, spineY: -0.16, spineX: 0.16, headY: 0.3, rootY: -0.12, thighLX: -0.55, kneeL: 0.6, thighRX: 0.4, kneeR: 0.35, lowerY: -0.15 }],
+    [0.17, { handL: [0.08, 0.13, 0.52] }],
+    [0.34, {}],
+  ],
+}
+
+/** Coiled for the Serious Punch: low and wide, the fist drawn back past the hip, the sword hand out front. */
+const SERIOUS_COIL: PoseSpec = {
+  ...FIST_FWD,
+  handL: [0.3, -0.12, -0.3],
+  poleL: [0.7, -0.2, -1],
+  handR: [-0.18, 0.02, 0.42],
+  bladeR: [-0.6, -0.6, 0.5],
+  edgeR: [-0.5, 0.5, 0.3],
+  poleR: [-0.8, -0.5, 0],
+  chestY: 0.65,
+  spineY: 0.25,
+  spineX: 0.22,
+  headY: -0.6,
+  headX: 0.05,
+  rootY: -0.24,
+  thighRX: -0.55,
+  thighRZ: -0.2,
+  kneeR: 0.85,
+  thighLX: 0.42,
+  thighLZ: 0.22,
+  kneeL: 0.62,
+  footL: 0.2,
+  lowerY: 0.55,
+}
+
+/** The fist thrown through: arm straight down the line, hips and shoulders turned all the way over. */
+const SERIOUS_HIT: PoseSpec = {
+  ...FIST_FWD,
+  ...SWORD_BACK,
+  handL: [0.02, 0.16, 0.58],
+  poleL: [0.5, -0.8, 0],
+  chestY: -0.6,
+  spineY: -0.25,
+  spineX: 0.26,
+  headY: 0.35,
+  headX: 0,
+  rootY: -0.22,
+  thighRX: -0.7,
+  thighRZ: -0.12,
+  kneeR: 0.9,
+  thighLX: 0.6,
+  thighLZ: 0.1,
+  kneeL: 0.12,
+  footL: 0.35,
+  lowerY: -0.35,
+}
+
 const HERO_CLIPS: Record<string, ClipDef> = {
+  jab,
+  seriousCharge: { dur: 1, loop: true, keys: [[0.16, SERIOUS_COIL]], proc: tremble(0.014) },
+  seriousRelease: {
+    dur: 1,
+    keys: [
+      [0.0, SERIOUS_COIL],
+      [0.05, SERIOUS_HIT],
+      [0.7, { handL: [0.03, 0.14, 0.56], spineX: 0.2 }],
+      [1, {}],
+    ],
+  },
   slash1,
   slash2,
   slash3,

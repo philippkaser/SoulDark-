@@ -96,6 +96,8 @@ export type Shape =
   | { t: 'slab'; a: THREE.Vector3; b: THREE.Vector3; r: number; h: number }
   /** A horizontal band between radii r0..r1 around c, up to height h (expanding shockwaves). */
   | { t: 'ring'; c: THREE.Vector3; r0: number; r1: number; h: number }
+  /** The slice d0..d1 (along the axis) of a cone from `c` along unit `dir`, radius r0 + d · tan (the Serious Punch's front). */
+  | { t: 'cone'; c: THREE.Vector3; dir: THREE.Vector3; tan: number; r0: number; d0: number; d1: number }
 
 /** Does the shape touch a sphere at (x, y, z) with radius r? */
 export function shapeHitsSphere(s: Shape, x: number, y: number, z: number, r: number): boolean {
@@ -129,6 +131,17 @@ export function shapeHitsSphere(s: Shape, x: number, y: number, z: number, r: nu
       const d = Math.hypot(x - s.c.x, z - s.c.z)
       return d >= s.r0 - r && d <= s.r1 + r
     }
+    case 'cone': {
+      const dx = x - s.c.x
+      const dy = y - s.c.y
+      const dz = z - s.c.z
+      const along = dx * s.dir.x + dy * s.dir.y + dz * s.dir.z
+      if (along < s.d0 - r || along > s.d1 + r) return false
+      const perp2 = Math.max(0, dx * dx + dy * dy + dz * dz - along * along)
+      // the wall is slanted: a sphere reaches it from r / cos(half-angle) away
+      const lim = s.r0 + Math.max(0, along) * s.tan + r * Math.sqrt(1 + s.tan * s.tan)
+      return perp2 <= lim * lim
+    }
   }
 }
 
@@ -144,7 +157,8 @@ export function shapeHitsCapsule(s: Shape, a: THREE.Vector3, b: THREE.Vector3, r
       return segmentSegmentDist(s.a, s.b, a, b) <= s.r + r
     case 'sector':
     case 'slab':
-    case 'ring': {
+    case 'ring':
+    case 'cone': {
       // sample the capsule's axis
       for (let i = 0; i <= 6; i++) {
         _sa.lerpVectors(a, b, i / 6)
@@ -174,6 +188,7 @@ export function shapeContact(s: Shape, p: THREE.Vector3, out: THREE.Vector3) {
     }
     case 'sector':
     case 'ring':
+    case 'cone':
       return out.copy(p)
   }
 }
@@ -191,5 +206,13 @@ export function shapeBounds(s: Shape): [number, number, number, number] {
       return [Math.min(s.a.x, s.b.x) - s.r, Math.min(s.a.z, s.b.z) - s.r, Math.max(s.a.x, s.b.x) + s.r, Math.max(s.a.z, s.b.z) + s.r]
     case 'ring':
       return [s.c.x - s.r1, s.c.z - s.r1, s.c.x + s.r1, s.c.z + s.r1]
+    case 'cone': {
+      const rr = s.r0 + Math.max(0, s.d1) * s.tan
+      const ax = s.c.x + s.dir.x * s.d0
+      const az = s.c.z + s.dir.z * s.d0
+      const bx = s.c.x + s.dir.x * s.d1
+      const bz = s.c.z + s.dir.z * s.d1
+      return [Math.min(ax, bx) - rr, Math.min(az, bz) - rr, Math.max(ax, bx) + rr, Math.max(az, bz) + rr]
+    }
   }
 }
