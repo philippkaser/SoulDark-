@@ -9,6 +9,7 @@ import { ARENA_HARD, ARENA_R } from '../world/layout'
 import { HIT_AT } from './heroClips'
 import { buildHero, type HeroModel } from './heroModel'
 import { HeroPower } from './power'
+import { HOLD_TO_CHARGE, JAB_CD, JAB_HIT, Punch, SERIOUS_HIT } from './punch'
 
 export type PState =
   | 'free'
@@ -25,6 +26,9 @@ export type PState =
   | 'land'
   | 'hurt'
   | 'judgment'
+  | 'punch'
+  | 'scharge'
+  | 'spunch'
   | 'cine'
   | 'dead'
   | 'victory'
@@ -49,6 +53,8 @@ export class Player {
   readonly avatar: Avatar
   /** Aura, levitating rocks, cracks and lightning answering the hero's big moments. */
   readonly power: HeroPower
+  /** The fist: jabs, the Serious Punch's coil and its pressure wave. */
+  readonly punch: Punch
   readonly pos = new THREE.Vector3()
   readonly vel = new THREE.Vector3()
   yaw = Math.PI
@@ -98,6 +104,7 @@ export class Player {
     this.model = buildHero()
     this.avatar = new Avatar(this.model)
     this.power = new HeroPower(game)
+    this.punch = new Punch(game)
   }
 
   reset(x = 0, z = 0, yaw = Math.PI) {
@@ -123,6 +130,8 @@ export class Player {
     this.avatar.resetCloth()
     this.perfectCount = 0
     this.power.reset()
+    this.punch.cancel()
+    this.punch.cd = 0
   }
 
   get alive() {
@@ -254,13 +263,15 @@ export class Player {
       this.die()
       return
     }
-    if (dmg >= 90 && this.state !== 'charge') this.enter('hurt')
+    // the coil and the follow-through do not flinch
+    if (dmg >= 90 && this.state !== 'charge' && this.state !== 'scharge' && this.state !== 'spunch') this.enter('hurt')
   }
 
   die() {
     this.state = 'dead'
     this.t = 0
     this.stopCharge()
+    this.punch.cancel()
     this.game.onPlayerDeath()
   }
 
@@ -274,6 +285,7 @@ export class Player {
 
   private enter(s: PState) {
     if (this.state === 'charge' && s !== 'cleave') this.stopCharge()
+    if (this.state === 'scharge' && s !== 'spunch') this.punch.cancel()
     this.state = s
     this.t = 0
     this.fired = false
@@ -314,8 +326,10 @@ export class Player {
     const s = this.state
 
     // ---- universal cancels: the hero is never stuck
-    const cancellable = s === 'free' || s === 'air' || s === 'guard' || s === 'land' || ((s === 'slash' || s === 'airslash') && this.fired) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12)
-    if (cancellable || s === 'charge' || s === 'catch') {
+    const cancellable =
+      s === 'free' || s === 'air' || s === 'guard' || s === 'land' || ((s === 'slash' || s === 'airslash' || s === 'punch') && this.fired) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12) || (s === 'spunch' && this.t > 0.6)
+    this.punch.tick(dt, f, enabled)
+    if (cancellable || s === 'charge' || s === 'catch' || s === 'scharge') {
       if (want(f.parry) && this.parryLag <= 0) return this.startParry()
       if (want(f.dash) && this.dashCd <= 0) return this.startDash(mx, mz)
     }
@@ -323,6 +337,7 @@ export class Player {
       if (g.onUltimate?.()) return
       if (this.divinity >= 100) return this.startJudgment()
     }
+    if (cancellable && want(f.punch) && this.punch.ready) return this.startJab()
 
     switch (this.state) {
       case 'free':
@@ -421,6 +436,31 @@ export class Player {
         break
       case 'judgment':
         this.updateJudgment(dt)
+        break
+      case 'punch': {
+        this.locomote(dt, 0, 0, 0, 0, !this.grounded)
+        this.yaw = turnToward(this.yaw, this.aimYaw, 30 * dt)
+        if (!this.fired && this.t >= JAB_HIT) {
+          this.fired = true
+          this.punch.jab()
+        }
+        // still holding after the jab: coil for the Serious Punch
+        if (this.fired && enabled && f.punchHeld && this.t >= HOLD_TO_CHARGE) this.startSeriousCharge()
+        else if (want(f.slash) && this.fired) this.startSlash(1)
+        else if (want(f.jump) && this.fired && this.grounded) this.leap()
+        else if (this.t >= 0.34) this.enter(this.grounded ? 'free' : 'air')
+        break
+      }
+      case 'scharge':
+        this.updateSeriousCharge(dt, f, enabled)
+        break
+      case 'spunch':
+        this.locomote(dt, 0, 0, 0, 0, !this.grounded)
+        if (!this.fired && this.t >= SERIOUS_HIT) {
+          this.fired = true
+          this.punch.serious()
+        }
+        if (this.t >= 1) this.enter(this.grounded ? 'free' : 'air')
         break
       case 'dead':
         this.vel.multiplyScalar(Math.exp(-dt * 6))
@@ -664,6 +704,52 @@ export class Player {
     this.charge = 0
   }
 
+  /** A jab with a short lunge down the aim. */
+  private startJab() {
+    this.stopCharge()
+    this.model.energyBlade.visible = false
+    this.enter('punch')
+    this.yaw = this.aimYaw
+    this.punch.cd = JAB_CD
+    const fx = Math.sin(this.aimYaw)
+    const fz = Math.cos(this.aimYaw)
+    const lunge = this.grounded ? 15 : 9
+    this.vel.x = fx * lunge
+    this.vel.z = fz * lunge
+    if (!this.grounded) this.vel.y = Math.max(this.vel.y, 2)
+  }
+
+  private startSeriousCharge() {
+    this.enter('scharge')
+    this.punch.beginCharge()
+    this.vel.x *= 0.2
+    this.vel.z *= 0.2
+  }
+
+  private updateSeriousCharge(dt: number, f: InputFrame, enabled: boolean) {
+    if (this.grounded) this.locomote(dt, 0, 0, 0, 0)
+    else {
+      // hang in the air while coiling
+      this.vel.y = Math.max(this.vel.y - GRAVITY * 0.15 * dt, -1)
+      this.vel.x *= Math.exp(-dt * 4)
+      this.vel.z *= Math.exp(-dt * 4)
+      this.integrate(dt)
+    }
+    this.yaw = turnToward(this.yaw, this.aimYaw, 8 * dt)
+    this.punch.chargeTick(dt)
+    if (enabled && f.punchHeld) return
+    if (this.punch.canRelease) {
+      this.yaw = this.aimYaw
+      this.enter('spunch')
+      return
+    }
+    // released early, or without the Divinity to pay for it: just a punch
+    const k = this.punch.charge
+    this.punch.cancel()
+    if (k > 0.2) this.startJab()
+    else this.enter(this.grounded ? 'free' : 'air')
+  }
+
   private startDive() {
     this.enter('dive')
     this.diveFrom = this.pos.y
@@ -849,6 +935,12 @@ export class Player {
         return 'hurt'
       case 'judgment':
         return this.t < 1.68 ? 'iai' : 'sheathe'
+      case 'punch':
+        return 'jab'
+      case 'scharge':
+        return 'seriousCharge'
+      case 'spunch':
+        return 'seriousRelease'
       case 'dead':
         return 'death'
       case 'victory':
