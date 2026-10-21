@@ -87,6 +87,8 @@ export class Player {
   cineT = 0
   /** For the HUD: recent perfect parries. */
   perfectCount = 0
+  /** Height the meteor dive started from (the slam crater grows with the fall). */
+  private diveFrom = 0
 
   constructor(game: Game) {
     this.game = game
@@ -95,7 +97,7 @@ export class Player {
   }
 
   reset(x = 0, z = 0, yaw = Math.PI) {
-    this.pos.set(x, 0, z)
+    this.pos.set(x, this.game.terrain.heightAt(x, z), z)
     this.vel.set(0, 0, 0)
     this.yaw = this.lastYaw = this.aimYaw = yaw
     this.state = 'free'
@@ -120,6 +122,11 @@ export class Player {
 
   get alive() {
     return this.state !== 'dead'
+  }
+
+  /** Height above the terrain under the hero. */
+  get altitude() {
+    return this.pos.y - this.game.terrain.heightAt(this.pos.x, this.pos.z)
   }
 
   get chest() {
@@ -443,16 +450,20 @@ export class Player {
     this.vel.y -= GRAVITY * dt
     this.integrate(dt)
     if (this.grounded) {
-      this.game.fx.dust(_v.copy(this.pos).setY(0.2), 4, 1, 1.2)
+      this.game.fx.dust(_v.copy(this.pos).setY(this.pos.y + 0.2), 4, 1, 1.2)
       audio.landing(0.3)
       this.enter('free')
     }
   }
 
   private integrate(dt: number) {
+    const was = this.grounded
     this.pos.addScaledVector(this.vel, dt)
-    if (this.pos.y <= 0) {
-      this.pos.y = 0
+    const gy = this.game.terrain.heightAt(this.pos.x, this.pos.z)
+    // stick to the ground running down slopes and crater walls instead of skipping off them
+    const snap = was && this.vel.y <= 0 ? 0.3 + Math.hypot(this.vel.x, this.vel.z) * dt * 1.2 : 0
+    if (this.pos.y <= gy + snap) {
+      this.pos.y = gy
       if (this.vel.y < 0) this.vel.y = 0
       this.grounded = true
     } else this.grounded = false
@@ -489,8 +500,8 @@ export class Player {
     this.grounded = false
     this.pos.y += 0.05
     audio.leap()
-    this.game.fx.dust(_v.copy(this.pos).setY(0.2), 5, 1.2, 1.5)
-    this.game.fx.ring(_v.copy(this.pos).setY(0.1), 4, '#ffe0a8', 0.3, { thick: 0.3 })
+    this.game.fx.dust(_v.copy(this.pos).setY(this.pos.y + 0.15), 5, 1.2, 1.5)
+    this.game.fx.ring(_v.copy(this.pos).setY(this.pos.y + 0.05), 4, '#ffe0a8', 0.3, { thick: 0.3 })
   }
 
   // -------------------------------------------------------------------------
@@ -525,7 +536,7 @@ export class Player {
     const fwd = _w.set(Math.sin(this.yaw), 0, Math.cos(this.yaw))
     // melee sweep
     const melee = g.damage(
-      { t: 'sector', c: this.pos, dir: fwd, range: n === 4 ? 7 : 5.5, cos: Math.cos(1.35), y0: -1, y1: 4 },
+      { t: 'sector', c: this.pos, dir: fwd, range: n === 4 ? 7 : 5.5, cos: Math.cos(1.35), y0: this.pos.y - 1, y1: this.pos.y + 4 },
       { id: newHitId(), kind: 'slash', dmg: n === 4 ? 400 : 160, power: n === 4 ? 26 : 18, origin: this.pos, dir: fwd, friendly: true },
     )
     const launch = origin.clone().addScaledVector(dir, 1.2)
@@ -599,11 +610,11 @@ export class Player {
       _w.set(this.pos.x - _v.x, this.pos.y + 1.6 - _v.y, this.pos.z - _v.z).multiplyScalar(2.2)
       g.fx.glow.spawn(_v, _w, [1, 0.8, 0.45], 0.9, 0.06 + Math.random() * 0.06, 0.45, 0, 0)
     }
-    if (this.grounded && Math.random() < dt * (4 + k * 14)) g.fx.dust(_v.copy(this.pos).setY(0.3), 1, 3 + k * 4, 1.4)
+    if (this.grounded && Math.random() < dt * (4 + k * 14)) g.fx.dust(_v.copy(this.pos).setY(this.pos.y + 0.3), 1, 3 + k * 4, 1.4)
     if (k >= 1 && !this.chargeFull) {
       this.chargeFull = true
       g.fx.flare(_v.copy(this.pos).setY(this.pos.y + 2), 8, '#fff0c0', 0.4)
-      g.fx.ring(_v.copy(this.pos).setY(0.1), 12, '#ffd890', 0.6, { thick: 0.15 })
+      g.fx.ring(_v.copy(this.pos).setY(this.pos.y + 0.1), 12, '#ffd890', 0.6, { thick: 0.15 })
       g.post.flashTo(0.12, '#fff2d0', 5)
       audio.parry(0, false)
     }
@@ -644,6 +655,7 @@ export class Player {
 
   private startDive() {
     this.enter('dive')
+    this.diveFrom = this.pos.y
     this.invuln = 0.4
     audio.dive()
     this.vel.x = Math.sin(this.aimYaw) * 4
@@ -654,6 +666,10 @@ export class Player {
     const g = this.game
     this.enter('land')
     this.vel.set(0, 0, 0)
+    // the ground caves in: the higher the dive, the bigger the crater
+    const fall = Math.max(0, this.diveFrom - this.pos.y)
+    g.terrain.crater(this.pos.x, this.pos.z, Math.min(26, 6 + fall * 1.3), Math.min(9, 1.4 + fall * 0.45), { rim: 0.3, ejecta: 0.8 })
+    this.pos.y = g.terrain.heightAt(this.pos.x, this.pos.z)
     const p = this.pos.clone()
     g.damage({ t: 'sphere', c: p, r: 15 }, { id: newHitId(), kind: 'slam', dmg: 380, power: 34, origin: p, friendly: true })
     g.fx.groundShock(p, 22)
@@ -778,7 +794,7 @@ export class Player {
     const rig = this.model.rig.root
     const saved = rig.position.clone()
     const savedYaw = rig.rotation.y
-    rig.position.set(x, 0, z)
+    rig.position.set(x, this.game.terrain.heightAt(x, z), z)
     rig.rotation.y = Math.random() * Math.PI * 2
     rig.updateMatrixWorld(true)
     this.game.fx.afterimage('#bcd8ff', 1.0, 0.9)
@@ -857,6 +873,7 @@ export class Player {
       windX: wind.x - this.vel.x * 0.6,
       windZ: wind.z - this.vel.z * 0.6,
       clothDt: dt,
+      floor: g.terrain.heightAt(this.pos.x, this.pos.z),
     })
     // the halo turns; it blazes when Judgment is ready
     const ready = this.divinity >= 100

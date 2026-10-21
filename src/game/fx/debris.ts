@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { mulberry32 } from '../../engine/math'
+import type { GroundSampler } from '../world/terrain'
 
 const MAX = 700
 
@@ -42,6 +43,8 @@ export class Debris {
   private shade = new Float32Array(MAX)
   private next = 0
   onLand?: (x: number, z: number, size: number) => void
+  /** Rubble lands on this (flat y = 0 when unset). */
+  ground: GroundSampler | null = null
 
   constructor() {
     const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 })
@@ -119,9 +122,10 @@ export class Debris {
       this.pos[k + 1] += this.vel[k + 1] * dt
       this.pos[k + 2] += this.vel[k + 2] * dt
       const r = i * 4
-      if (this.pos[k + 1] < s * 0.6) {
+      const gy = this.ground ? this.ground.heightAt(this.pos[k], this.pos[k + 2]) : 0
+      if (this.pos[k + 1] < gy + s * 0.6) {
         if (this.vel[k + 1] < -6 && s > 0.8) this.onLand?.(this.pos[k], this.pos[k + 2], s)
-        this.pos[k + 1] = s * 0.6
+        this.pos[k + 1] = gy + s * 0.6
         this.vel[k + 1] *= -0.3
         this.vel[k] *= 0.55
         this.vel[k + 2] *= 0.55

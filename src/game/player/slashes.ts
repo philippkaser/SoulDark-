@@ -147,9 +147,10 @@ export class Slashes {
       }
       c.prev.copy(c.pos)
       c.pos.addScaledVector(c.dir, c.speed * dt)
-      // aimed into the ground: skim along it instead of burrowing
-      if (c.pos.y < 1 && c.dir.y < 0 && !c.visualOnly) {
-        c.pos.y = 1
+      // aimed into the ground: skim along it (and up crater walls) instead of burrowing
+      const gy = g.terrain.heightAt(c.pos.x, c.pos.z)
+      if (c.pos.y < gy + 1 && c.dir.y <= 0 && !c.visualOnly) {
+        c.pos.y = gy + 1
         c.dir.y = 0
         c.dir.normalize()
         this.orient(c)
@@ -170,13 +171,14 @@ export class Slashes {
       g.cutProjectiles(shape)
 
       // skimming the ground: carve a glowing trench and kick up debris
-      const groundY = c.pos.y - Math.abs(Math.cos(c.roll)) * 0.05 - Math.abs(Math.sin(c.roll)) * w * 0.5
+      const groundY = c.pos.y - gy - Math.abs(Math.cos(c.roll)) * 0.05 - Math.abs(Math.sin(c.roll)) * w * 0.5
       if (groundY < 0.6) {
         if (!c.trenchFrom) c.trenchFrom = c.prev.clone()
         if (c.trenchFrom.distanceTo(c.pos) > 3) {
           g.scorch.fissure(c.trenchFrom.x, c.trenchFrom.z, c.pos.x, c.pos.z, 0.5 + w * 0.06, 0.8)
+          g.terrain.trench(c.trenchFrom.x, c.trenchFrom.z, c.pos.x, c.pos.z, 1 + w * 0.12, 0.4, { taper: 0, lip: 0.6, jag: 0.15, seed: c.id })
           c.trenchFrom.copy(c.pos)
-          _p.copy(c.pos).setY(0.2)
+          _p.copy(c.pos).setY(gy + 0.2)
           g.fx.spark(_p, UP, 10, 9, [1, 0.7, 0.3])
           g.fx.dust(_p, 2, 1.2, 1.6)
           if (Math.random() < 0.5) g.fx.debris.burst(_p, 3, 7, 0.14, 0.6)

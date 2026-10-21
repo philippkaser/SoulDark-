@@ -82,7 +82,8 @@ export class Cape {
     this.initialized = true
   }
 
-  update(dt: number, windX: number, windZ: number) {
+  /** `floor`: ground height under the cloth (it rests on it). */
+  update(dt: number, windX: number, windZ: number, floor = 0) {
     if (dt <= 0) return
     this.anchor.updateWorldMatrix(true, false)
     if (!this.initialized) this.reset()
@@ -92,7 +93,7 @@ export class Cape {
     this.time += dt
     const steps = dt > 1 / 45 ? 2 : 1
     const h = Math.min(dt, 1 / 30) / steps
-    for (let s = 0; s < steps; s++) this.step(h, windX, windZ)
+    for (let s = 0; s < steps; s++) this.step(h, windX, windZ, floor)
     const attr = this.geo.attributes.position as THREE.BufferAttribute
     ;(attr.array as Float32Array).set(this.pos)
     attr.needsUpdate = true
@@ -100,7 +101,7 @@ export class Cape {
     this.geo.computeBoundingSphere()
   }
 
-  private step(h: number, windX: number, windZ: number) {
+  private step(h: number, windX: number, windZ: number, floor: number) {
     const { cols, rows, pos, prev } = this
     const sc = this.scale
     const damping = 0.985
@@ -140,7 +141,7 @@ export class Cape {
           if (r < rows - 2) this.constrain(i, i + cols * 2, ry * 2, r === 0, 0.3)
         }
       }
-      this.collide()
+      this.collide(floor)
     }
   }
 
@@ -168,7 +169,7 @@ export class Cape {
     }
   }
 
-  private collide() {
+  private collide(floor: number) {
     const p = this.pos
     const n = this.cols * this.rows
     for (const cap of this.colliders) {
@@ -200,7 +201,7 @@ export class Cape {
     }
     for (let i = this.cols; i < n; i++) {
       const k = i * 3 + 1
-      if (p[k] < 0.03) p[k] = 0.03
+      if (p[k] < floor + 0.03) p[k] = floor + 0.03
     }
   }
 }

@@ -72,6 +72,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 **Destruction**
 - A real-time slicer: meshes are cloned into two halves clipped by the cut plane, the cut faces glow molten, and the halves topple, slide or tumble, crash and dissolve. Spires, cannons, airships, the Colossus (its posed skin is baked to static geometry first), the Sol Lance station and the moon can all be cut
 - A scorch map: craters, fissures and beam trails burn into the ground and cool over time
+- Deformable terrain: a heightfield the hero's power carves for real. Meteor-dive slams leave craters that grow with the fall, the Heaven Splitter tears a canyon to the horizon, shells, meteors, crashing airships and the Colossus's sword gouge the plain, the Sol Lance bores molten grooves, and a nuke or the moon leaves a bowl a hundred metres across. Crater walls turn to fractured, stratified rock; the hero, the legion, arrows, rubble, smoke and the camera all follow the ground
 - An instanced horde of up to 2,200 soldiers in one draw call, animated in the vertex shader, flung, sliced and vaporized
 - Procedural mushroom clouds with a rolling toroidal cap, stem, base surge and condensation ring; shockwaves that travel at a visible speed and flatten everything in their band
 
@@ -102,7 +103,7 @@ src/
     enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
                     artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse
     fx/             explosions, debris, afterimages, mushroom clouds, slicer
-    world/          layout, sky, ground, scorch map, spires and mountains
+    world/          layout, sky, ground, scorch map, terrain heightfield, spires and mountains
     waves.ts        the eight trials
     director.ts     title attract mode, campaign/sandbox switching
     score.ts        style ranks, combo, feed, tally
