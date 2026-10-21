@@ -1,5 +1,5 @@
 import { NOISE_GLSL } from '../../engine/gfx/noise'
-import { CUT_SPEED, MAX_BORES, MAX_NOTCHES, RIDGE_FLOOR, TABLE_A, TABLE_R } from './ridge'
+import { BORE_LEAD, CUT_SPEED, MAX_BORES, MAX_NOTCHES, RIDGE_FLOOR, TABLE_A, TABLE_R } from './ridge'
 
 /**
  * GLSL for the mountain rings: the rock surface (strata, lava veins, eclipse
@@ -15,6 +15,7 @@ export const MTN_COMMON = /* glsl */ `
 #define MAX_BORES ${MAX_BORES}
 #define MAX_NOTCHES ${MAX_NOTCHES}
 #define CUT_SPEED ${f(CUT_SPEED)}
+#define BORE_LEAD ${f(BORE_LEAD)}
 uniform vec3 uSunDir;
 uniform vec3 uFogColor;
 uniform float uDawn;
@@ -162,11 +163,13 @@ void main() {
     if (floor(C.w) != uRing || B.w < 0.0) continue;
     vec3 v = p - A.xyz;
     float t = dot(v, B.xyz);
-    if (t < C.x - A.w * 2.5 || t > C.y) continue;
+    if (t < C.x - A.w * BORE_LEAD || t > C.y) continue;
     float since = B.w - max(t - C.x, 0.0) / C.z;
     if (since < 0.0) continue;
     vec3 rad = v - B.xyz * t;
     float rr = length(rad);
+    // nothing of this bore reaches this far from its axis (keeps the noise off the rest of the ring)
+    if (rr > A.w * 3.6) continue;
     vec3 e1, e2;
     boreFrame(B.xyz, e1, e2);
     vec2 q = vec2(dot(rad, e1), dot(rad, e2)) / max(rr, 1e-3);
@@ -199,6 +202,7 @@ void main() {
     float since = notchSince(C.z, s, B.z);
     if (since < 0.0) continue;
     float lat = abs(dot(rel, vec2(B.y, -B.x)));
+    if (lat > A.z + max(p.y - C.y + 40.0, 0.0) * A.w * 1.4 + 160.0) continue;
     float seed = fract(C.w) * 100.0;
     float yb = notchBottom(s, notchFloor(since, C.x, C.y), seed);
     float yRel = p.y - yb;
@@ -344,7 +348,7 @@ void main() {
   albedo *= 0.75 + 0.5 * gNoise(vUv * vec2(0.08, 0.02));
   // deep in the cut the walls shade each other: only the lips catch the eclipse
   float lip = max(exp(-under / 9.0), exp(-vLip / 8.0));
-  vec3 col = albedo * mtnAmbient(n) * 0.7 + (mtnLight(albedo, n, v) - albedo * mtnAmbient(n)) * lip * 0.6;
+  vec3 col = mtnLight(albedo, n, v) * mix(0.35, 1.0, lip);
   // molten: the whole cut glows at first, then only the lips and a few sinuous cracks stay hot
   float cf = gNoise(vUv * vec2(0.03, 0.005)) + 0.4 * gNoise(vUv * vec2(0.09, 0.016) + 3.1);
   float crack = (1.0 - smoothstep(0.0, fwidth(cf) * 1.5, abs(cf - 0.7))) * smoothstep(0.15, 0.04, fwidth(cf));

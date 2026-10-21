@@ -5,7 +5,7 @@ import { EMBER, FIRE, GOLD, WHITE_GOLD } from '../fx/particleFx'
 import type { Game } from '../Game'
 import { Billows, Boulders } from './mountainFx'
 import { liningFrag, notchVert, ridgeFrag, ridgeVert, tubeVert } from './mountainShaders'
-import { CUT_SPEED, emptyBore, emptyNotch, FAR_RING, MAX_BORES, MAX_NOTCHES, NEAR_RING, packBores, packNotches, pickSlot, Ridge, SKIRT, type Bore, type Notch } from './ridge'
+import { BORE_LEAD, CUT_SPEED, emptyBore, emptyNotch, FAR_RING, MAX_BORES, MAX_NOTCHES, NEAR_RING, packBores, packNotches, pickSlot, Ridge, SKIRT, type Bore, type Notch } from './ridge'
 
 const _p = new THREE.Vector3()
 const _q = new THREE.Vector3()
@@ -383,7 +383,6 @@ export class Mountains {
     this.syncUniforms()
     this.boulders.update(dt, this.ground)
     this.billows.update(dt, this.game.camera.position, this.ground)
-    void rdt
   }
 
   private syncUniforms() {
@@ -401,7 +400,7 @@ export class Mountains {
       u.uO.value.copy(b.origin)
       u.uD.value.copy(b.dir)
       u.uR.value = b.radius
-      u.uT.value.set(b.tFace - b.radius * 2.5, b.tEnd, b.tFace, b.tExit)
+      u.uT.value.set(b.tFace - b.radius * BORE_LEAD, b.tEnd, b.tFace, b.tExit)
       u.uSpeed.value = b.speed
       u.uAge.value = b.age
       u.uSeed.value = b.seed * 100
@@ -565,6 +564,7 @@ export class Mountains {
     _v.copy(_w).multiplyScalar(rnd(2, 5)).addScaledVector(_e1, Math.cos(a) * 4)
     _v.y += rnd(5, 10)
     this.billows.spawn(_q, _v, rnd(14, 22), rnd(9, 14), { grow: 1.0, alpha: 0.38, heat: hot * 0.9, cool: 0.2, dark: 0.75, drag: 0.6, buoy: 5 })
+    if (hot > 0.2) this.game.fx.emberDrift(_q, 40 * hot, b.radius * 0.5, { rise: 7, burst: 4, life: 5, size: 0.4 * this.zoom(_q), curl: 5, color: EMBER, wind: null })
   }
 
   /** The cut reaches the crest: the slot's rock is blasted up and out, its walls slide. */

@@ -310,6 +310,8 @@ export class Ridge {
 
 export const MAX_BORES = 8
 export const MAX_NOTCHES = 4
+/** How far in front of the face (in radii) a bore starts carving: enough for the slope below the hole, not the whole foothill. */
+export const BORE_LEAD = 1.2
 /** How fast a Heaven Splitter notch sweeps across a ring (m/s). */
 export const CUT_SPEED = 1600
 
