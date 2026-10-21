@@ -65,6 +65,8 @@ export class Game {
   readonly scorch = new ScorchMap()
   /** The deformable ground: craters, trenches, heightAt for anything that stands on it. */
   readonly terrain: Terrain
+  /** Bores a tunnel through the mountains along a ray at the given wave speed (m/s); returns the distance to the mountain face, or -1. Set by the mountains. */
+  boreMountains: ((origin: THREE.Vector3, dir: THREE.Vector3, radius: number, speed: number) => number) | null = null
   readonly fx: Fx
   readonly slicer = new Slicer()
   readonly props: Props
