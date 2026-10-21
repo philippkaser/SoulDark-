@@ -4,7 +4,9 @@ import { Bloom, EffectComposer, SMAA, ToneMapping, Vignette } from '@react-three
 import { ToneMappingMode } from 'postprocessing'
 import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 import * as THREE from 'three'
+import { GodRaysEffect } from '../engine/gfx/godrays'
 import { PowerFXEffect } from '../engine/gfx/powerfx'
+import { StreakEffect } from '../engine/gfx/streak'
 import { input } from '../input/input'
 import type { Quality } from '../state/settings'
 import { useUI } from '../state/store'
@@ -71,7 +73,39 @@ function Stage({ quality, onGame }: { quality: Quality; onGame: (g: Game | null)
   return <primitive object={game.root} />
 }
 
-function PowerPass({ game }: { game: Game | null }) {
+const QUALITY_K: Record<Quality, number> = { high: 1, medium: 0.75, low: 0.5 }
+
+/** Eclipse light shafts + blast shafts (HDR, before tone mapping). */
+function RaysPass({ game, quality }: { game: Game | null; quality: Quality }) {
+  const effect = useMemo(() => new GodRaysEffect({ quality: QUALITY_K[quality] }), [quality])
+  useEffect(() => () => effect.dispose(), [effect])
+  useFrame(() => {
+    if (!game) return
+    const p = game.post
+    const dawn = game.sky.u.uDawn.value
+    effect.sun.copy(p.sunScreen)
+    effect.sunStrength = p.sunRays * p.sunVis
+    // the dawn sun is a far stronger light than the corona
+    effect.sunGain = 1.1 + dawn * 0.8
+    effect.threshold = 0.35 + dawn * 0.9
+    effect.blast.copy(p.blastScreen)
+    effect.blastStrength = p.blastRays
+    effect.blastColor.copy(p.blastColor)
+  })
+  return <primitive object={effect} />
+}
+
+/** Anamorphic lens streaks from the hottest pixels (HDR, before tone mapping). */
+function StreakPass({ game, quality }: { game: Game | null; quality: Quality }) {
+  const effect = useMemo(() => new StreakEffect({ quality: QUALITY_K[quality] }), [quality])
+  useEffect(() => () => effect.dispose(), [effect])
+  useFrame(() => {
+    if (game) effect.amount = game.post.streakAmount
+  })
+  return <primitive object={effect} />
+}
+
+function PowerPass({ game, quality }: { game: Game | null; quality: Quality }) {
   const effect = useMemo(() => new PowerFXEffect(), [])
   useFrame(({ clock }) => {
     if (!game) return
@@ -85,9 +119,13 @@ function PowerPass({ game }: { game: Game | null }) {
     effect.set('uChroma', p.chroma)
     effect.set('uDesat', p.desat)
     effect.uniforms.get('uTint')!.value.copy(p.tint)
-    effect.uniforms.get('uShockCenter')!.value.copy(p.shockCenter)
-    effect.set('uShockRadius', p.shockRadius)
-    effect.set('uShockStrength', p.shockStrength)
+    effect.uniforms.get('uShock')!.value = p.shockData
+    effect.uniforms.get('uShockSharp')!.value = p.shockSharp
+    effect.set('uShockOn', p.shockOn ? 1 : 0)
+    effect.uniforms.get('uHaze')!.value = p.hazeData
+    effect.set('uHazeOn', p.hazeOn ? 1 : 0)
+    effect.set('uHazeClock', p.hazeClock)
+    effect.set('uFringe', quality === 'low' ? 0 : p.fringe)
     effect.set('uHurt', p.hurt)
     effect.set('uClock', clock.elapsedTime)
   })
@@ -95,13 +133,16 @@ function PowerPass({ game }: { game: Game | null }) {
 }
 
 function Post({ quality, game }: { quality: Quality; game: Game | null }) {
+  // shafts and streaks read HDR input and only sample their own buffers, so they merge with bloom + tone mapping
   const effects: ReactElement[] = [
+    <RaysPass key="rays" game={game} quality={quality} />,
+    <StreakPass key="streak" game={game} quality={quality} />,
     <Bloom key="bloom" mipmapBlur intensity={1.15} luminanceThreshold={0.9} luminanceSmoothing={0.25} radius={0.8} />,
     <ToneMapping key="tm" mode={ToneMappingMode.AGX} />,
     <Vignette key="vg" offset={0.24} darkness={0.72} />,
   ]
   if (quality !== 'low') effects.push(<SMAA key="smaa" />)
-  effects.push(<PowerPass key="power" game={game} />)
+  effects.push(<PowerPass key="power" game={game} quality={quality} />)
   return (
     <EffectComposer multisampling={0} stencilBuffer={false} autoClear={false}>
       {effects}

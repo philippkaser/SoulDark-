@@ -335,7 +335,7 @@ export class Game {
     this.ambience(wdt)
     this.fx.update(wdt, rdt, this.camera, this.viewportH)
     this.sky.update(rdt, this.camera, true)
-    this.post.update(rdt)
+    this.post.update(rdt, this.camera, wdt)
     if (this.scene?.fog) {
       const fog = this.scene.fog as THREE.FogExp2
       fog.color.copy(this.sky.fogColor)

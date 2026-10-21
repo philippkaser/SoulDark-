@@ -304,6 +304,11 @@ export class Projectiles implements System {
     g.fx.nuke(at.clone().setY(Math.max(0, at.y - 10)), scale)
     g.post.flashTo(far ? 1 : 1.2, '#fff8ec', far ? 0.9 : 0.6)
     g.post.impactFrames([1, 2, 1, 2, 1, 0], 1 / 18)
+    // light shafts through everything in front of the fireball, a volley of shock rings, heat over ground zero
+    g.post.rays(at.clone().setY(Math.max(at.y, 40 * scale)), far ? 2.4 : 1.6, 4)
+    for (let i = 0; i < 3; i++) g.post.shock(at, g.camera, (far ? 0.05 : 0.07) - i * 0.012, { delay: i * 0.16, speed: 1.9 - i * 0.35, width: 1 + i * 0.6 })
+    g.post.haze(at.clone().setY(0), 110 * scale, 1.3, 16)
+    g.post.streak(2.5)
     g.cam.addTrauma(far ? 0.4 : 1.2)
     audio.nukeFlash()
     g.damage({ t: 'sphere', c: at, r: 60 * scale + 20 }, { id: newHitId(), kind: 'blast', dmg: 20000, power: 60, origin: at, friendly: byHero || far })

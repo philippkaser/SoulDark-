@@ -22,6 +22,30 @@ const _sp = new THREE.Vector3()
 const _sl = new THREE.Vector3()
 const _gp = new THREE.Vector3()
 const _gl = new THREE.Vector3()
+const _off = new THREE.Vector3()
+const _kd = new THREE.Vector3()
+
+const DEG = Math.PI / 180
+/** Share of a dolly spent widening the lens; the rest eases it back. */
+const DOLLY_ATTACK = 0.3
+/** The dolly keeps a subject this far away (or nearer) the same size. */
+const DOLLY_SUBJECT = 14
+
+/** Dolly-zoom amount (0..1) at normalised time `u`: a fast ease-out rise, then a smooth return. */
+export function dollyEnvelope(u: number) {
+  if (u <= 0 || u >= 1) return 0
+  if (u < DOLLY_ATTACK) {
+    const a = 1 - u / DOLLY_ATTACK
+    return 1 - a * a
+  }
+  const v = (u - DOLLY_ATTACK) / (1 - DOLLY_ATTACK)
+  return 1 - v * v * (3 - 2 * v)
+}
+
+/** Distance factor that keeps a subject the same size when the FOV goes from `fov0` to `fov1` (degrees). */
+export function dollyScale(fov0: number, fov1: number) {
+  return Math.tan(fov0 * 0.5 * DEG) / Math.tan(fov1 * 0.5 * DEG)
+}
 
 /**
  * Over-the-shoulder action camera with trauma shake, FOV punches and
@@ -50,6 +74,9 @@ export class CameraRig {
   private outDur = 1
   private outFrom = { pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62 }
   private punch = new THREE.Vector3()
+  private dollyDeg = 0
+  private dollyT = 0
+  private dollyDur = 0
 
   snap(pos: THREE.Vector3, yaw: number) {
     this.yaw = yaw
@@ -69,6 +96,36 @@ export class CameraRig {
   /** Directional camera punch (recoil). */
   kick(dir: THREE.Vector3, amount: number) {
     this.punch.addScaledVector(dir, amount * this.shakeScale)
+  }
+
+  /** Punch the camera away from a world point (a blast, an impact), with a little lift. */
+  kickFrom(from: THREE.Vector3, amount: number) {
+    _kd.subVectors(this.pos, from).setY(0)
+    if (_kd.lengthSq() < 1e-6) _kd.set(0, 0, 1)
+    _kd.normalize().setY(0.35)
+    this.kick(_kd, amount)
+  }
+
+  /**
+   * Vertigo dolly-zoom: the lens widens by `amountDeg` while the camera moves
+   * in, so the subject keeps its size and the world stretches away behind it.
+   * Negative narrows the lens and pulls back. Rises over the first third of
+   * `dur` (real seconds), then eases home. A weaker request never cuts a
+   * stronger one short.
+   */
+  dolly(amountDeg: number, dur = 1) {
+    const cur = this.dollyAmount
+    if (Math.abs(amountDeg) < Math.abs(cur) || amountDeg === 0) return
+    this.dollyDeg = amountDeg
+    this.dollyDur = Math.max(0.05, dur)
+    // start the rise where the current one is, so a re-trigger never pops
+    const k = clamp(cur / amountDeg, 0, 0.999)
+    this.dollyT = this.dollyDur * DOLLY_ATTACK * (1 - Math.sqrt(1 - k))
+  }
+
+  /** Current dolly-zoom FOV offset in degrees. */
+  get dollyAmount() {
+    return this.dollyDur > 0 ? this.dollyDeg * dollyEnvelope(this.dollyT / this.dollyDur) : 0
   }
 
   play(shot: Shot) {
@@ -150,14 +207,30 @@ export class CameraRig {
     const roll = Math.sin(t * 0.9 + 0.4) * tr * 0.05
     this.punch.multiplyScalar(Math.exp(-rdt * 10))
 
+    this.fovKick *= Math.exp(-rdt * 5)
+    this.fov += (fov - this.fov) * damp(10, rdt)
+    let fovOut = this.fov
+    if (this.dollyDur > 0) {
+      this.dollyT += rdt
+      if (this.dollyT >= this.dollyDur) this.dollyDur = 0
+      else {
+        fovOut = clamp(this.fov + this.dollyAmount, 15, 150)
+        // move along the view line so a subject up to DOLLY_SUBJECT away keeps its size
+        _off.subVectors(this.look, this.pos)
+        const d = _off.length()
+        const sd = Math.min(d, DOLLY_SUBJECT)
+        const move = Math.min(sd - sd * dollyScale(this.fov, fovOut), d - 1.2)
+        if (d > 1e-3) this.pos.addScaledVector(_off, move / d)
+        this.pos.y = Math.max(0.45, this.pos.y)
+      }
+    }
+
     cam.position.set(this.pos.x + sx + this.punch.x, this.pos.y + sy + this.punch.y, this.pos.z + this.punch.z)
     cam.lookAt(this.look)
     cam.rotateZ(roll)
 
-    this.fovKick *= Math.exp(-rdt * 5)
-    this.fov += (fov - this.fov) * damp(10, rdt)
-    if (Math.abs(cam.fov - this.fov) > 0.01) {
-      cam.fov = this.fov
+    if (Math.abs(cam.fov - fovOut) > 0.01) {
+      cam.fov = fovOut
       cam.updateProjectionMatrix()
     }
     this.ready = true
