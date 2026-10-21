@@ -306,7 +306,10 @@ export class Projectiles implements System {
     g.fx.nuke(at.clone().setY(Math.max(0, at.y - 10)), scale)
     g.post.flashTo(far ? 1 : 1.2, '#fff8ec', far ? 0.9 : 0.6)
     g.post.impactFrames([1, 2, 1, 2, 1, 0], 1 / 18)
+    // fx.nuke throws the light shafts and heat haze; the air ripples in a volley of shock rings
+    for (let i = 0; i < 3; i++) g.post.shock(at, g.camera, (far ? 0.05 : 0.07) - i * 0.012, { delay: i * 0.16, speed: 1.9 - i * 0.35, width: 1 + i * 0.6 })
     g.cam.addTrauma(far ? 0.4 : 1.2)
+    if (!far) g.cam.kickFrom(at, 0.8)
     audio.nukeFlash()
     g.damage({ t: 'sphere', c: at, r: 60 * scale + 20 }, { id: newHitId(), kind: 'blast', dmg: 20000, power: 60, origin: at, friendly: byHero || far })
     // the shockwave crosses the plain

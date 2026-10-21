@@ -164,6 +164,7 @@ export class OrbitalBeam {
         g.fx.flare(this.point.clone().setY(2), 30, '#fff', 0.4)
         g.cam.addTrauma(0.5)
         g.post.flashTo(0.25, this.o.color, 4)
+        g.post.rays(this.point.clone().setY(g.terrain.heightAt(this.point.x, this.point.z) + 3), 1, 1.2, this.o.coreColor ?? this.o.color)
         g.sky.flash(_v.subVectors(src, g.camera.position).normalize(), 0.6, this.o.color)
       }
       return
@@ -241,6 +242,7 @@ export class OrbitalBeam {
         g.scorch.crater(this.point.x, this.point.z, R * 1.1, 1)
         // the beam bores into the plain and melts a groove as it sweeps
         g.terrain.crater(this.point.x, this.point.z, R * 0.9, 0.22, { rim: 0.3, ejecta: 0, jag: 0.1 })
+        g.post.haze(_v.copy(this.point).setY(gy + 1), R * 3, 1, 2.5)
         g.damage({ t: 'capsule', a: this.point.clone().setY(gy - 1), b: this.point.clone().setY(30), r: R }, { id: newHitId(), kind: 'beam', dmg: 1000, power: 10, origin: this.point.clone(), friendly: false })
       }
       g.fx.spark(_v.copy(this.point).setY(gy + 0.3), UP, 8, 22, [1, 0.6, 0.4])

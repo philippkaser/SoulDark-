@@ -247,6 +247,10 @@ export class Game {
     this.post.impactFrames(k > 0.7 ? [2, 1, 2, 0] : [2, 0])
     this.post.kickZoom(0.05 + k * 0.08)
     this.post.flashTo(0.06 + k * 0.12, '#fff4dc', 5)
+    // light pours out of the opening cut, through the hero's silhouette
+    _v.copy(a).addScaledVector(fwd, 8 + k * 10).setY(this.terrain.heightAt(a.x, a.z) + 3 + k * 4)
+    this.post.rays(_v, 0.3 + k * 0.7, 0.6 + k * 0.9, '#ffe2b0')
+    this.post.streak(0.3 + k * 0.9, _v)
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
     audio.rumble(0.6 * k, 3)
@@ -359,7 +363,7 @@ export class Game {
     this.ambience(wdt)
     this.fx.update(wdt, rdt, this.camera, this.viewportH)
     this.sky.update(rdt, this.camera, true)
-    this.post.update(rdt)
+    this.post.update(rdt, this.camera, wdt)
     if (this.scene?.fog) {
       const fog = this.scene.fog as THREE.FogExp2
       fog.color.copy(this.sky.fogColor)

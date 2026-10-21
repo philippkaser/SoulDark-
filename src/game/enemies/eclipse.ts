@@ -281,6 +281,10 @@ export class Eclipse implements System {
     g.time.slowmo(2.2, 0.25)
     g.post.flashTo(0.7, '#fff2d8', 1.5)
     g.post.impactFrames([1, 2, 1, 2, 1, 0], 1 / 16)
+    // light floods out between the halves
+    g.post.rays(at, 1.5, 3, '#fff0d0')
+    g.post.streak(1.4, at)
+    g.cam.dolly(18, 2.2)
     g.sky.flash(_v.subVectors(at, g.camera.position).normalize(), 1.5, '#fff0d0')
     g.score.kill('moon', 1, at)
     useUI.getState().stamp('THE MOON, CLEAVED', 'divine')
