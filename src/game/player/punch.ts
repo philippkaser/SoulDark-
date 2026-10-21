@@ -257,7 +257,7 @@ export class Punch implements System {
     this.snd?.stop()
     this.snd = audio.seriousCharge()
     // the world tightens around the hero
-    g.cam.dolly(-14, SERIOUS_CHARGE * 2)
+    g.cam.dolly(-8, SERIOUS_CHARGE * 2)
   }
 
   /** Every hero frame while coiled: power gathers in the fist, the ground gives, the air is shoved aside. */
@@ -322,7 +322,9 @@ export class Punch implements System {
         // the ground gives under the stance
         g.terrain.crater(p.pos.x, p.pos.z, 5.5, 0.5, { rim: 0.5, ejecta: 0.4 })
         if (p.grounded) p.pos.y = g.terrain.heightAt(p.pos.x, p.pos.z)
-        fx.groundShock(p.pos, 14, '#ffd8a0', true)
+        fx.ring(_p.copy(p.pos).setY(p.pos.y + 0.1), 16, '#ffd8a0', 0.6, { thick: 0.1, alpha: 0.9 })
+        fx.gpu.dustMotes(_p, 90, 3, { out: 16, up: 2, size: 0.4, life: 1.8 })
+        fx.debris.burst(_p, 10, 9, 0.18, 0.3)
       }
       audio.landing(1.2)
       if (p.divinity < SERIOUS_COST) useUI.getState().stamp(`SERIOUS PUNCH NEEDS ${SERIOUS_COST} DIVINITY`, 'warn')
@@ -414,15 +416,15 @@ export class Punch implements System {
     // a beat of stillness, then the world is thrown back
     g.time.freeze(0.16)
     g.time.divine(1.5, 0.4)
-    post.impactFrames([2, 1, 0], 1 / 22)
-    post.flashTo(0.14, '#fff2e0', 4)
-    post.kickZoom(0.22, _p.copy(o).addScaledVector(w.dir, 8), g.camera)
-    post.speedLines(1, 0.6)
-    post.kickChroma(1.1)
+    post.impactFrames([2, 0], 1 / 20)
+    post.flashTo(0.1, '#fff2e0', 5)
+    post.kickZoom(0.12, _p.copy(o).addScaledVector(w.dir, 8), g.camera)
+    post.speedLines(0.85, 0.5)
+    post.kickChroma(0.8)
     post.shock(o, g.camera, 0.06, { speed: 1.3, width: 1.6 })
     post.shock(_p.copy(o).addScaledVector(w.dir, 12), g.camera, 0.035, { delay: 0.12, speed: 1.8, width: 1 })
-    post.rays(_p.copy(o).addScaledVector(w.dir, 5), 0.55, 0.9, '#ffe4bc')
-    post.streak(0.6, o)
+    post.rays(_p.copy(o).addScaledVector(w.dir, 30), 0.25, 0.8, '#ffe4bc')
+    post.streak(0.35, o)
     g.cam.addTrauma(0.95)
     g.cam.dolly(22, 1.4)
     g.cam.kick(w.dir, 0.4)
@@ -430,21 +432,24 @@ export class Punch implements System {
     g.aura.flare(1, undefined, false)
     g.levitate.release(w.flat, 1.9)
     g.lightning.fan(o, w.dir, 6, 16, 0.5, { width: 0.22, forks: 4, life: 0.35, intensity: 0.85, light: false, sparks: false })
-    fx.light(o, '#ffe0b0', 900, 90, 5)
+    fx.light(o, '#ffe0b0', 160, 60, 7)
     // the fist's vapor cone and the first rings of the corridor
-    this.fx.vapor(_p.copy(o).addScaledVector(w.dir, 0.4), w.dir, 4, 0.8, 4.5, 0.5, 1)
+    this.fx.vapor(_p.copy(o).addScaledVector(w.dir, 0.4), w.dir, 4, 0.8, 4.5, 0.5, 0.55)
     for (let i = 0; i < 5; i++) {
       _p.copy(o).addScaledVector(w.dir, 1 + i * 3)
       this.fx.ring(_p, w.dir, 0.6 + i * 0.4, 3 + i * 1.8, 0.45 + i * 0.06, { speed: 160 + i * 60, delay: i * 0.01, alpha: 1, thick: 0.2 })
     }
-    fx.sparkShower(o, w.dir, 420, 90, 0.16, WHITE_GOLD, { life: 0.45, size: 0.06, drag: 2.2, stretch: 0.035, heat: 3.6 })
+    fx.sparkShower(o, w.dir, 260, 90, 0.16, WHITE_GOLD, { life: 0.45, size: 0.05, drag: 2.2, stretch: 0.035, heat: 2.4 })
     // a ground-hugging shock ring around the hero, and the ground under him gives
     if (p.altitude < 4) {
       const gp = _p.copy(p.pos)
       g.terrain.crater(gp.x, gp.z, 9, 1.2, { rim: 0.6, ejecta: 0.8 })
       if (p.grounded) p.pos.y = g.terrain.heightAt(p.pos.x, p.pos.z)
-      fx.groundShock(gp, 48, '#ffd8a0', true)
-      fx.gpu.plasmaRing(_w.copy(gp).setY(gp.y + 0.3), UP, 70, 1400, GOLD, { expand: 0.7, fill: 0.5, thick: 0.25, life: 1.4, size: 0.1, stretch: 0.04, heat: 2.6 })
+      gp.y = g.terrain.heightAt(gp.x, gp.z)
+      fx.ring(_w.copy(gp).setY(gp.y + 0.12), 60, '#ffd8a0', 0.9, { thick: 0.06, alpha: 1 })
+      fx.ring(_w.copy(gp).setY(gp.y + 0.14), 28, '#fff0d8', 0.5, { thick: 0.12, alpha: 0.7 })
+      fx.debris.burst(_w.copy(gp).setY(gp.y + 0.4), 30, 22, 0.3, 0.4, 0.8)
+      fx.gpu.plasmaRing(_w.copy(gp).setY(gp.y + 0.3), UP, 70, 900, GOLD, { expand: 0.7, fill: 0.5, thick: 0.2, life: 1.3, size: 0.08, stretch: 0.04, heat: 2 })
       const ndust = Math.round(48 * g.q)
       for (let i = 0; i < ndust; i++) {
         const a = (i / ndust) * Math.PI * 2
@@ -501,15 +506,10 @@ export class Punch implements System {
 
   update(dt: number) {
     this.fx.update(dt)
-    let front = 0
-    for (const w of this.waves) {
-      if (!w.on) {
-        this.fx.placeFront(front++, _p, UP, 0, 0)
-        continue
-      }
-      this.step(w, dt)
-      this.placeFront(w, front++)
-    }
+    this.waves.forEach((w, i) => {
+      if (w.on) this.step(w, dt)
+      this.placeFront(w, i * 2)
+    })
     const w = this.newest
     if (w?.on) {
       // the wake streams out behind the front and fades once it has run its course
@@ -519,12 +519,14 @@ export class Punch implements System {
     } else this.fx.placeWake(_p, UP, 0, 0, 0, 0)
   }
 
+  /** The travelling front: a colossal arch the width of the kill zone, and a tighter, brighter ring on the axis. */
   private placeFront(w: Wave, i: number) {
     const d = w.d
-    const fade = 1 - smoothstep(WAVE_RANGE * 0.55, WAVE_RANGE, d)
-    const tail = d >= WAVE_RANGE ? 0 : 1
+    const a = w.on && d < WAVE_RANGE ? (1 - smoothstep(WAVE_RANGE * 0.5, WAVE_RANGE, d)) * smoothstep(4, 40, d) : 0
     _p.copy(w.origin).addScaledVector(w.dir, d)
-    this.fx.placeFront(i, _p, w.dir, VIS_R0 + d * VIS_TAN * 1.4, 0.95 * fade * tail * smoothstep(2, 20, d), 0.14)
+    this.fx.placeFront(i, _p, w.dir, waveRadius(d) * 0.96, a * 0.7, 0.3)
+    _p.copy(w.origin).addScaledVector(w.dir, Math.max(0, d - 6))
+    this.fx.placeFront(i + 1, _p, w.dir, VIS_R0 + d * VIS_TAN * 1.5, a, 0.16)
   }
 
   /** Advance one wave: annihilate what it sweeps, tear the ground, leave rings behind. */

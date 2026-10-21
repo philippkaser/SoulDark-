@@ -30,11 +30,16 @@ function ringMat() {
     vertexShader: /* glsl */ `
       varying vec2 vUv;
       varying float vFace;
+      varying float vNear;
       void main() {
         vUv = uv * 2.0 - 1.0;
         vec4 wp = modelMatrix * vec4(position, 1.0);
         vec3 n = normalize((modelMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
         vFace = abs(dot(normalize(cameraPosition - wp.xyz), n));
+        // a ring right in front of the lens would wash the hero out: it thins away instead
+        float r = length(modelMatrix[0].xyz);
+        float dc = length(cameraPosition - modelMatrix[3].xyz);
+        vNear = smoothstep(r * 1.2 + 2.0, r * 2.5 + 7.0, dc);
         gl_Position = projectionMatrix * viewMatrix * wp;
       }`,
     fragmentShader: /* glsl */ `
@@ -45,6 +50,7 @@ function ringMat() {
       uniform float uAge;
       varying vec2 vUv;
       varying float vFace;
+      varying float vNear;
       float h(float n) { return fract(sin(n) * 43758.5453); }
       float vn(float x) { float i = floor(x); float f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(h(i + uSeed), h(i + 1.0 + uSeed), f); }
       void main() {
@@ -61,7 +67,7 @@ function ringMat() {
         float streak = 0.55 + 0.45 * vn(a * 140.0 + uSeed * 3.0);
         float v = (band * 0.45 + rim) * streak;
         // seen edge-on the quad is a sliver: let it go rather than alias
-        v *= smoothstep(0.04, 0.35, vFace);
+        v *= smoothstep(0.04, 0.35, vFace) * vNear;
         gl_FragColor = vec4(uColor * v * uAlpha, 1.0);
       }`,
     transparent: true,
@@ -243,7 +249,7 @@ export class PunchFx {
   readonly root = new THREE.Group()
   private rings: Ring[] = []
   private vapors: Vapor[] = []
-  /** The Serious Punch's moving front (two rings) and its wake. */
+  /** The Serious Punch's moving fronts (two rings for each of two waves) and its wake. */
   readonly front: Held[] = []
   readonly wake: Held
   /** The light gathered in the fist while it charges. */
@@ -273,7 +279,7 @@ export class PunchFx {
       this.root.add(mesh)
       this.vapors.push({ mesh, mat, on: false, t: 0, dur: 1, len: 1, r0: 1, r1: 1, a0: 1 })
     }
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 4; i++) {
       const mat = ringMat()
       const mesh = new THREE.Mesh(quad, mat)
       mesh.visible = false
