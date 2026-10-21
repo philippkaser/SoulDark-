@@ -260,7 +260,7 @@ void main() {
   vWorld = wp;
   vNormal = -off;
   vSince = since;
-  vLip = min(abs(t - uT.z), abs(uT.w - t)) / uR;
+  vLip = min(abs(t - uT.z), abs(uT.w - t));
   vUv = vec2(atan(q.y, q.x) * uR, t);
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }
@@ -335,14 +335,14 @@ void main() {
   vec3 albedo = mtnStrata(p, vUv.x * 0.7) * vec3(0.8, 0.72, 0.7);
   albedo *= 0.75 + 0.5 * gNoise(vUv * vec2(0.08, 0.02));
   // deep in the cut the walls shade each other: only the lips catch the eclipse
-  float lip = max(exp(-under / 9.0), exp(-vLip * 4.0));
+  float lip = max(exp(-under / 9.0), exp(-vLip / 8.0));
   vec3 col = albedo * mtnAmbient(n) * 0.7 + (mtnLight(albedo, n, v) - albedo * mtnAmbient(n)) * lip * 0.6;
   // molten: the whole cut glows at first, then only the lips and a few sinuous cracks stay hot
-  float cf = gNoise(vUv * vec2(0.035, 0.012)) + 0.4 * gNoise(vUv * vec2(0.1, 0.04) + 3.1);
+  float cf = gNoise(vUv * vec2(0.03, 0.005)) + 0.4 * gNoise(vUv * vec2(0.09, 0.016) + 3.1);
   float crack = (1.0 - smoothstep(0.0, fwidth(cf) * 1.5, abs(cf - 0.7))) * smoothstep(0.15, 0.04, fwidth(cf));
   float since = vSince;
   float hot = (2.2 * exp(-since * 1.1) + 0.5 * exp(-since / 7.0)) * (0.55 + 0.45 * gNoise(vUv * 0.06 + since * 0.3));
-  hot += carveHeat(since) * (lip * 1.1 + crack * 0.7);
+  hot += carveHeat(since) * (exp(-under / 5.0) * 1.2 + crack * 0.6);
   hot *= uMolten;
   float trans;
   col = mtnAerial(col, p, trans);

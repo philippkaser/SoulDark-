@@ -362,10 +362,10 @@ export class Mountains {
         this.exitBlast(b)
       }
       // the mouths smoke and spit embers while they cool
-      if (b.stage >= 1 && b.age < 28) {
+      if (b.stage >= 1 && b.age < 26) {
         b.wisp -= dt
         if (b.wisp <= 0) {
-          b.wisp = rnd(0.3, 0.6)
+          b.wisp = rnd(0.5, 0.9)
           this.wisp(b, b.tFace, -1)
           if (b.stage === 2) this.wisp(b, b.tExit, 1)
         }
@@ -543,10 +543,11 @@ export class Mountains {
       const sa = Math.sin(a)
       _q.copy(mouth).addScaledVector(_e1, ca * R * 0.6).addScaledVector(_e2, sa * R * 0.6)
       this.outOfRock(_q, d, 4, R * 3)
-      _v.copy(d).multiplyScalar(rnd(40, 170)).addScaledVector(_e1, ca * 18).addScaledVector(_e2, sa * 18)
-      _v.y += rnd(5, 30)
-      const rise = i % 3 === 0
-      this.billows.spawn(_q, _v, rnd(30, 55), rnd(18, 30), { grow: 0.9, alpha: 0.9, heat: rnd(0.6, 1.6), cool: 0.25, dark: rnd(0.3, 0.7), drag: 0.45, buoy: rise ? 9 : 2, flow: !rise })
+      // a wide cone, mostly up and aside: the line of sight back through the tunnel clears quickly
+      _v.copy(d).multiplyScalar(rnd(40, 150)).addScaledVector(_e1, ca * rnd(40, 90)).addScaledVector(_e2, sa * rnd(30, 70))
+      _v.y += rnd(10, 40)
+      const rise = i % 2 === 0
+      this.billows.spawn(_q, _v, rnd(28, 50), rnd(12, 20), { grow: 0.85, alpha: 0.7, heat: rnd(0.6, 1.6), cool: 0.3, dark: rnd(0.3, 0.7), drag: 0.45, buoy: rise ? 10 : 2, flow: !rise })
     }
     this.thunder(p, R / 60, 'exit')
   }
@@ -554,14 +555,16 @@ export class Mountains {
   /** A curl of smoke from a cooling mouth. */
   private wisp(b: Bore, t: number, side: number) {
     frame(b.dir, _e1, _e2)
-    const a = Math.random() * TAU
-    _q.copy(b.origin).addScaledVector(b.dir, t).addScaledVector(_e1, Math.cos(a) * b.radius * 0.8).addScaledVector(_e2, Math.sin(a) * b.radius * 0.5)
+    // from the upper lip, so the smoke climbs the face instead of veiling the hole
+    const a = rnd(0.35, Math.PI - 0.35)
+    const rr = b.radius * rnd(1.05, 1.25)
+    _q.copy(b.origin).addScaledVector(b.dir, t).addScaledVector(_e1, Math.cos(a) * rr).addScaledVector(_e2, Math.sin(a) * rr)
     _w.copy(b.dir).multiplyScalar(side)
     this.outOfRock(_q, _w, 5, b.radius * 3)
     const hot = Math.exp(-b.age / 10)
-    _v.copy(_w).multiplyScalar(rnd(4, 10))
-    _v.y += rnd(4, 9)
-    this.billows.spawn(_q, _v, rnd(14, 24), rnd(10, 16), { grow: 1.0, alpha: 0.5, heat: hot * 0.9, cool: 0.2, dark: 0.75, drag: 0.6, buoy: 4 })
+    _v.copy(_w).multiplyScalar(rnd(2, 5)).addScaledVector(_e1, Math.cos(a) * 4)
+    _v.y += rnd(5, 10)
+    this.billows.spawn(_q, _v, rnd(14, 22), rnd(9, 14), { grow: 1.0, alpha: 0.38, heat: hot * 0.9, cool: 0.2, dark: 0.75, drag: 0.6, buoy: 5 })
   }
 
   /** The cut reaches the crest: the slot's rock is blasted up and out, its walls slide. */
