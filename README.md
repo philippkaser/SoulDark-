@@ -81,6 +81,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 **World**
 - A scorched plain under an eclipse: domain-warped basalt cracks with lava seams, standing stone spires, the Dominion Citadel with searchlights and silos, mountain ridges, embers and ash
 - A sky shader with the eclipse corona, lightning, a crack that splits the sky open and a dawn that replaces the eclipse with a true sun
+- Two rings of solid mountains (`world/ridge.ts`, `world/mountains.ts`): a polar heightfield with a ridged-noise crest, gullied cliffs, strata, seeping lava veins, an eclipse rim light and their own aerial perspective. A punch wave bores real tunnels through them (`game.boreMountains(origin, dir, radius, speed)`): the rock shader discards a ragged cylinder when the wave arrives, a molten tube lines the tunnel, fractures race out from the hole, slabs and a dust surge pour down the slopes, and the thunder arrives at the speed of sound. A full Heaven Splitter cuts a slot down from the crest, and the eclipse light pours through whatever you open
 
 **Audio (all procedural WebAudio)**
 - Synthesized slashes, parry rings by tier, cannons, missiles, sirens, nuclear flashes with distance-delayed shock, beams, titan footsteps and roars

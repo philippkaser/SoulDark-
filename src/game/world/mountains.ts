@@ -310,8 +310,8 @@ export class Mountains {
       n.ring = ring
       n.origin.set(a.x, 0, a.z)
       n.fwd.copy(f)
-      n.width = 4 + 8 * k
-      n.flare = 0.1 + 0.12 * k
+      n.width = 6 + 9 * k
+      n.flare = 0.14 + 0.14 * k
       n.s0 = s0 - 30
       n.s1 = s1 + 30
       n.yTop = hMax + 40
