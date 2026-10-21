@@ -211,11 +211,13 @@ export class Titans implements System {
     g.player.gainDivinity(30)
     audio.roar(_v.set(t.x, 20, t.z), 0.55)
     audio.musicSting('big')
-    useUI.getState().stamp('COLOSSUS CLEAVED', 'divine')
+    // a punch tears straight through: split down the line it travelled
+    const punched = hit?.kind === 'punch'
+    useUI.getState().stamp(punched ? 'COLOSSUS, PUNCHED THROUGH' : 'COLOSSUS CLEAVED', 'divine')
     g.time.slowmo(1.6, 0.35)
     g.post.flashTo(0.4, '#fff0d0', 2)
     g.post.impactFrames([2, 1, 2, 0], 1 / 16)
-    const plane = hit?.plane ?? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(Math.cos(t.yaw), 0.15, -Math.sin(t.yaw)).normalize(), _v.set(t.x, 18, t.z))
+    const plane = punched && hit?.dir ? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(hit.dir.z, 0.12, -hit.dir.x).normalize(), _v.set(t.x, 18, t.z)) : hit?.plane ?? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(Math.cos(t.yaw), 0.15, -Math.sin(t.yaw)).normalize(), _v.set(t.x, 18, t.z))
     // freeze the pose into stone and cut it apart
     t.model.rig.root.updateMatrixWorld(true)
     const baked: THREE.Mesh[] = t.model.meshes.map((m) => {
