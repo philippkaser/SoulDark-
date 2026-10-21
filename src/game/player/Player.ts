@@ -8,6 +8,7 @@ import { newHitId, type ParryResult, type Tier } from '../types'
 import { ARENA_HARD, ARENA_R } from '../world/layout'
 import { HIT_AT } from './heroClips'
 import { buildHero, type HeroModel } from './heroModel'
+import { HeroPower } from './power'
 
 export type PState =
   | 'free'
@@ -46,6 +47,8 @@ const _dir = new THREE.Vector3()
 export class Player {
   readonly model: HeroModel
   readonly avatar: Avatar
+  /** Aura, levitating rocks, cracks and lightning answering the hero's big moments. */
+  readonly power: HeroPower
   readonly pos = new THREE.Vector3()
   readonly vel = new THREE.Vector3()
   yaw = Math.PI
@@ -94,6 +97,7 @@ export class Player {
     this.game = game
     this.model = buildHero()
     this.avatar = new Avatar(this.model)
+    this.power = new HeroPower(game)
   }
 
   reset(x = 0, z = 0, yaw = Math.PI) {
@@ -118,6 +122,7 @@ export class Player {
     this.model.energyBlade.visible = false
     this.avatar.resetCloth()
     this.perfectCount = 0
+    this.power.reset()
   }
 
   get alive() {
@@ -195,6 +200,7 @@ export class Player {
     const toward = _w.subVectors(from, p).normalize()
     const hitP = p.clone().addScaledVector(toward, 1.1)
     g.fx.parryBurst(hitP, toward, n)
+    this.power.parry(hitP, toward, n)
     audio.parry(n, true)
     if (n >= 1) audio.musicSting(n >= 2 ? 'big' : 'parry')
     g.time.freeze([0.05, 0.085, 0.13, 0.24][n])
@@ -425,6 +431,7 @@ export class Player {
     if (this.state !== 'parry') this.parriedTier = -1
     this.constrain()
     this.animate(dt)
+    this.power.update(dt)
   }
 
   // -------------------------------------------------------------------------
@@ -597,6 +604,7 @@ export class Player {
     this.yaw = turnToward(this.yaw, this.aimYaw, 10 * dt)
     this.charge = Math.min(1, this.charge + dt / CHARGE_TIME)
     const k = this.charge
+    this.power.charge(k, dt)
     this.chargeSnd?.set(k)
     this.model.energyU.uLen.value = 2 + k * k * 70
     this.model.energyU.uPower.value = 0.4 + k * 0.6
@@ -646,6 +654,7 @@ export class Player {
     g.damage({ t: 'slab', a, b, r: half, h: 60 + len }, { id: newHitId(), kind: 'heaven', dmg: 500 + 3500 * k * k, power: 30 + 25 * k, origin: a, dir: fwd, plane, friendly: true })
     g.cutProjectiles({ t: 'slab', a, b, r: half + 2, h: 60 + len })
     g.cleaveFx(a, b, fwd, k)
+    this.power.release(a, b, fwd, k)
     this.model.energyU.uLen.value = len
     this.energyFade = 0.45
     audio.cleave(k)
@@ -752,6 +761,7 @@ export class Player {
     this.vel.set(0, 0, 0)
     this.divinity = 0
     g.time.stop(true)
+    this.power.judgment()
     g.post.desatTarget = 0.88
     g.post.tint.setRGB(0.72, 0.82, 1.15)
     audio.timeStop()

@@ -1,11 +1,13 @@
 import * as THREE from 'three'
+import type { GroundSampler } from '../world/terrain'
 
 /**
  * Lightning: branching bolts drawn as camera-facing ribbons with a white-hot
  * core and a coloured additive halo. Every bolt re-jitters its path every
- * ~50 ms so it crackles, and fades over its life. All bolts share one dynamic
- * mesh (one draw call); slots and buffers are pooled, nothing is allocated
- * per frame.
+ * 40-60 ms so it crackles, and fades over its life. All bolts share one
+ * dynamic mesh (one draw call); slots and buffers are pooled, nothing is
+ * allocated per frame. Runs on the hero's clock: it crackles through divine
+ * time and stopped time, and holds still in hitstop.
  */
 
 export type BoltPalette = 'gold' | 'white' | 'violet' | 'red' | 'blue'
@@ -33,6 +35,8 @@ export interface BoltOpts {
   light?: boolean
   /** Sparks where it lands. Default true for bolts, false for arcs. */
   sparks?: boolean
+  /** When it appears, re-seat both ends this high above the ground (the ground may have been carved since). */
+  hug?: number
 }
 
 /** The bits of Fx lightning uses (Fx satisfies it structurally). */
@@ -43,17 +47,19 @@ export interface LightningFx {
 
 export const PALETTE: Record<BoltPalette, string> = {
   gold: '#ffb43c',
-  white: '#cfd8ff',
+  white: '#b8ccff',
   violet: '#9a5cff',
   red: '#ff2a2a',
   blue: '#5aa8ff',
 }
 
-const MAX_BOLTS = 48
+export const MAX_BOLTS = 64
 const MAX_PTS = 256
 const MAX_LINES = 14
 const MAX_VERTS = 16384
-const GROUND = 0.04
+/** Bolts never dip below the ground by more than this. */
+const LIFT = 0.05
+const ATTRS = ['position', 'aTan', 'aCol', 'aParams'] as const
 
 const _a = new THREE.Vector3()
 const _b = new THREE.Vector3()
@@ -63,14 +69,18 @@ const _c = new THREE.Color()
 const _sparkCol: [number, number, number] = [1, 0.9, 0.7]
 const UP = new THREE.Vector3(0, 1, 0)
 
+function floorAt(ground: GroundSampler | null, x: number, z: number) {
+  return (ground ? ground.heightAt(x, z) : 0) + LIFT
+}
+
 /**
  * Midpoint displacement: writes 2^depth + 1 points from a to b into
  * out[o * 3 ..]. Each midpoint moves sideways (perpendicular to its segment)
  * by up to `jag` times the segment length, so the path is fractal with the
- * endpoints exactly preserved. Points never go below the ground. Returns the
- * point count.
+ * endpoints exactly preserved. Midpoints never go below the ground. Returns
+ * the point count.
  */
-export function displaceLine(out: Float32Array, o: number, a: THREE.Vector3, b: THREE.Vector3, depth: number, jag: number, rnd: () => number = Math.random) {
+export function displaceLine(out: Float32Array, o: number, a: THREE.Vector3, b: THREE.Vector3, depth: number, jag: number, rnd: () => number = Math.random, ground: GroundSampler | null = null) {
   const n = (1 << depth) + 1
   const base = o * 3
   out[base] = a.x
@@ -95,10 +105,12 @@ export function displaceLine(out: Float32Array, o: number, a: THREE.Vector3, b: 
       _r.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1)
       _r.addScaledVector(_d, -_r.dot(_d))
       const rl = _r.length() || 1
-      const off = (rnd() * 2 - 1) * jag * len / rl
-      out[im] = (out[i0] + out[i1]) * 0.5 + _r.x * off
-      out[im + 1] = Math.max(GROUND, (out[i0 + 1] + out[i1 + 1]) * 0.5 + _r.y * off)
-      out[im + 2] = (out[i0 + 2] + out[i1 + 2]) * 0.5 + _r.z * off
+      const off = ((rnd() * 2 - 1) * jag * len) / rl
+      const x = (out[i0] + out[i1]) * 0.5 + _r.x * off
+      const z = (out[i0 + 2] + out[i1 + 2]) * 0.5 + _r.z * off
+      out[im] = x
+      out[im + 1] = Math.max(floorAt(ground, x, z), (out[i0 + 1] + out[i1 + 1]) * 0.5 + _r.y * off)
+      out[im + 2] = z
     }
   }
   return n
@@ -119,7 +131,6 @@ interface Bolt {
   color: THREE.Color
   age: number
   life: number
-  delay: number
   grow: number
   flicker: number
   jitterT: number
@@ -132,6 +143,8 @@ interface Bolt {
   light: boolean
   sparks: boolean
   struck: boolean
+  hug: number
+  born: boolean
   pts: Float32Array
   /** Per line: first point, point count. */
   lineStart: Int16Array
@@ -155,7 +168,6 @@ function makeBolt(): Bolt {
     color: new THREE.Color(),
     age: 0,
     life: 1,
-    delay: 0,
     grow: 0,
     flicker: 0.05,
     jitterT: 0,
@@ -168,6 +180,8 @@ function makeBolt(): Bolt {
     light: false,
     sparks: false,
     struck: false,
+    hug: -1,
+    born: false,
     pts: new Float32Array(MAX_PTS * 3),
     lineStart: new Int16Array(MAX_LINES),
     lineCount: new Int16Array(MAX_LINES),
@@ -196,7 +210,7 @@ void main() {
   float sl = length(side);
   side = sl > 1e-4 ? side / sl : vec3(0.0, 1.0, 0.0);
   // never thinner than a few pixels, so far bolts don't shimmer away
-  float w = max(aParams.y, dist * uPx * 6.0);
+  float w = max(aParams.y, dist * uPx * 5.0);
   p += side * aParams.x * w * 0.5;
   vV = aParams.x;
   vCol = aCol;
@@ -214,14 +228,16 @@ varying float vA;
 void main() {
   float x = abs(vV);
   float halo = (1.0 - x) * (1.0 - x);
-  float core = smoothstep(0.24, 0.0, x) * vCore;
-  vec3 c = vCol * halo * 0.9 + mix(vCol, vec3(1.0, 0.97, 0.92), 0.85) * core * 3.2;
+  float core = (1.0 - smoothstep(0.0, 0.22, x)) * vCore;
+  vec3 c = vCol * halo * 0.8 + mix(vCol, vec3(1.0, 0.97, 0.92), 0.85) * core * 2.6;
   gl_FragColor = vec4(c * vA, 1.0);
 }
 `
 
 export class Lightning {
   readonly root: THREE.Mesh
+  /** The deformable ground, so bolts land on it and never dive through it. */
+  ground: GroundSampler | null = null
   private bolts: Bolt[] = []
   private gen = 1
   private fx: LightningFx | null
@@ -270,12 +286,12 @@ export class Lightning {
     this.root.visible = false
   }
 
-  /** A branching bolt from a to b. Returns a handle for move()/kill(). */
+  /** A branching bolt from a to b. Returns a handle for move()/alive()/kill(). */
   bolt(a: THREE.Vector3, b: THREE.Vector3, opts: BoltOpts = {}) {
     return this.spawn(a, b, opts, false)
   }
 
-  /** A thin sustained arc between two points; keep it attached with move(). */
+  /** A thin sustained arc between two points (sword tip to ground); keep it attached with move(). */
   arc(a: THREE.Vector3, b: THREE.Vector3, opts: BoltOpts = {}) {
     return this.spawn(a, b, opts, true)
   }
@@ -299,31 +315,75 @@ export class Lightning {
     if (b) b.active = false
   }
 
-  /** Bolts raining down around a point over `dur` seconds. */
+  /** `n` bolts from the sky onto the ground around `center` over `dur` seconds. */
   storm(center: THREE.Vector3, n: number, radius: number, dur: number, opts: BoltOpts = {}) {
     n = Math.max(1, Math.round(n * (0.5 + this.q * 0.5)))
+    const o: BoltOpts = { ...opts }
+    const d0 = opts.delay ?? 0
+    o.grow = opts.grow ?? 0.06
     for (let i = 0; i < n; i++) {
       const ang = Math.random() * Math.PI * 2
       const r = radius * (0.25 + Math.random() * 0.75)
-      _b.set(center.x + Math.sin(ang) * r, 0, center.z + Math.cos(ang) * r)
+      const bx = center.x + Math.sin(ang) * r
+      const bz = center.z + Math.cos(ang) * r
+      _b.set(bx, floorAt(this.ground, bx, bz), bz)
       const ang2 = ang + (Math.random() - 0.5) * 1.2
       const r2 = r * (0.3 + Math.random() * 0.9)
       _a.set(center.x + Math.sin(ang2) * r2, center.y + 28 + Math.random() * 30, center.z + Math.cos(ang2) * r2)
-      this.bolt(_a, _b, { ...opts, delay: (opts.delay ?? 0) + Math.random() * dur, grow: opts.grow ?? 0.05 })
+      o.delay = d0 + Math.random() * dur
+      this.bolt(_a, _b, o)
     }
   }
 
   /** Forks thrown out of a point in a cone around `dir` (parry impacts, discharges). */
   fan(p: THREE.Vector3, dir: THREE.Vector3, n: number, len: number, spread = 0.8, opts: BoltOpts = {}) {
     n = Math.max(1, Math.round(n * (0.5 + this.q * 0.5)))
+    const o: BoltOpts = { ...opts }
+    const d0 = opts.delay ?? 0
     for (let i = 0; i < n; i++) {
       _d.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize()
       _d.multiplyScalar(spread).add(dir).normalize()
       const l = len * (0.45 + Math.random() * 0.55)
       _b.copy(p).addScaledVector(_d, l)
-      if (_b.y < GROUND) _b.y = GROUND
-      this.bolt(p, _b, { ...opts, delay: (opts.delay ?? 0) + Math.random() * 0.06 })
+      _b.y = Math.max(_b.y, floorAt(this.ground, _b.x, _b.z))
+      o.delay = d0 + Math.random() * 0.06
+      this.bolt(p, _b, o)
     }
+  }
+
+  /**
+   * Lightning racing along the ground from a to b at `speed` m/s: a chain of
+   * bolts hugging the surface, each striking as the front passes. Returns the
+   * seconds the front takes to arrive.
+   */
+  crawl(a: THREE.Vector3, b: THREE.Vector3, speed: number, opts: BoltOpts & { hop?: number; height?: number } = {}) {
+    const hop = opts.hop ?? 9
+    const h = opts.height ?? 0.6
+    const len = Math.hypot(b.x - a.x, b.z - a.z)
+    const n = Math.max(1, Math.min(MAX_BOLTS - 8, Math.ceil(len / hop)))
+    const o: BoltOpts = { ...opts }
+    const d0 = opts.delay ?? 0
+    const seg = len / n
+    o.grow = seg / speed
+    o.life = opts.life ?? 0.32
+    o.forks = opts.forks ?? 3
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n
+      const t1 = (i + 1) / n
+      const x0 = a.x + (b.x - a.x) * t0
+      const z0 = a.z + (b.z - a.z) * t0
+      const x1 = a.x + (b.x - a.x) * t1
+      const z1 = a.z + (b.z - a.z) * t1
+      _a.set(x0, floorAt(this.ground, x0, z0) + h, z0)
+      _b.set(x1, floorAt(this.ground, x1, z1) + h, z1)
+      o.hug = h
+      o.delay = d0 + (i * seg) / speed
+      // a few links light the ground; the rest are carried by the flash of the cut
+      o.light = opts.light ?? i % 4 === 0
+      o.sparks = opts.sparks ?? i % 2 === 0
+      this.bolt(_a, _b, o)
+    }
+    return len / speed
   }
 
   clear() {
@@ -341,8 +401,8 @@ export class Lightning {
 
   private spawn(a: THREE.Vector3, b: THREE.Vector3, o: BoltOpts, arc: boolean) {
     // reuse a free slot, else the one closest to death
-    let slot = -1
-    let best = -1
+    let slot = 0
+    let best = -Infinity
     for (let i = 0; i < MAX_BOLTS; i++) {
       const x = this.bolts[i]
       if (!x.active) {
@@ -353,7 +413,7 @@ export class Lightning {
       if (k > best) (best = k), (slot = i)
     }
     const bolt = this.bolts[slot]
-    this.gen = (this.gen + 1) & 0x7fffff
+    this.gen = (this.gen % 0x7fffff) + 1
     bolt.gen = this.gen
     bolt.active = true
     bolt.arc = arc
@@ -363,11 +423,11 @@ export class Lightning {
     const c = o.color ?? 'gold'
     bolt.color.set(typeof c === 'string' && c in PALETTE ? PALETTE[c as BoltPalette] : c)
     bolt.age = -(o.delay ?? 0)
-    bolt.life = o.life ?? (arc ? 0.16 : 0.34)
+    bolt.life = (o.life ?? (arc ? 0.16 : 0.34)) + (o.grow ?? 0)
     bolt.grow = o.grow ?? 0
     bolt.flicker = o.flicker ?? 0.04 + Math.random() * 0.02
     bolt.jitterT = 0
-    bolt.width = o.width ?? (arc ? Math.min(0.16, 0.05 + len * 0.02) : Math.min(2.6, 0.12 + len * 0.022))
+    bolt.width = o.width ?? (arc ? Math.min(0.16, 0.05 + len * 0.02) : Math.min(2.2, 0.1 + len * 0.02))
     bolt.intensity = o.intensity ?? 1
     bolt.jag = o.jag ?? (arc ? 0.28 : 0.2)
     bolt.depth = boltDepth(len, arc)
@@ -376,6 +436,8 @@ export class Lightning {
     bolt.light = o.light ?? !arc
     bolt.sparks = o.sparks ?? !arc
     bolt.struck = false
+    bolt.hug = o.hug ?? -1
+    bolt.born = false
     bolt.bright = 1.25
     bolt.nLines = 0
     this.jitter(bolt)
@@ -385,7 +447,8 @@ export class Lightning {
   /** Regenerate the bolt's trunk and forks around its current endpoints. */
   private jitter(bolt: Bolt) {
     const pts = bolt.pts
-    let np = displaceLine(pts, 0, bolt.a, bolt.b, bolt.depth, bolt.jag)
+    const ground = this.ground
+    let np = displaceLine(pts, 0, bolt.a, bolt.b, bolt.depth, bolt.jag, Math.random, ground)
     const trunkN = np
     bolt.lineStart[0] = 0
     bolt.lineCount[0] = trunkN
@@ -406,9 +469,9 @@ export class Lightning {
       _r.addScaledVector(_d, 0.9).normalize()
       const remain = _a.distanceTo(bolt.b)
       _b.copy(_a).addScaledVector(_r, remain * (0.25 + Math.random() * 0.35) + 0.15)
-      if (_b.y < GROUND) _b.y = GROUND
+      _b.y = Math.max(_b.y, floorAt(ground, _b.x, _b.z))
       bolt.lineStart[lines] = np
-      bolt.lineCount[lines] = displaceLine(pts, np, _a, _b, fdepth, bolt.jag * 1.2)
+      bolt.lineCount[lines] = displaceLine(pts, np, _a, _b, fdepth, bolt.jag * 1.2, Math.random, ground)
       bolt.lineW[lines] = 0.55
       bolt.lineAt[lines] = i / (trunkN - 1)
       np += fn
@@ -423,9 +486,9 @@ export class Lightning {
         _d.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize()
         _r.add(_d).normalize()
         _b.copy(_a).addScaledVector(_r, remain * (0.1 + Math.random() * 0.15) + 0.1)
-        if (_b.y < GROUND) _b.y = GROUND
+        _b.y = Math.max(_b.y, floorAt(ground, _b.x, _b.z))
         bolt.lineStart[lines] = np
-        bolt.lineCount[lines] = displaceLine(pts, np, _a, _b, sd, bolt.jag * 1.3)
+        bolt.lineCount[lines] = displaceLine(pts, np, _a, _b, sd, bolt.jag * 1.3, Math.random, ground)
         bolt.lineW[lines] = 0.32
         bolt.lineAt[lines] = bolt.lineAt[lines - 1]
         np += sn
@@ -452,6 +515,14 @@ export class Lightning {
       }
       live++
       if (bolt.age < 0) continue
+      if (!bolt.born) {
+        bolt.born = true
+        if (bolt.hug >= 0) {
+          bolt.a.y = floorAt(this.ground, bolt.a.x, bolt.a.z) + bolt.hug
+          bolt.b.y = floorAt(this.ground, bolt.b.x, bolt.b.z) + bolt.hug
+          this.jitter(bolt)
+        }
+      }
       if (!bolt.struck && (bolt.grow <= 0 || bolt.age >= bolt.grow)) this.strike(bolt)
       bolt.jitterT += dt
       if (bolt.jitterT >= bolt.flicker) {
@@ -459,7 +530,8 @@ export class Lightning {
         this.jitter(bolt)
         bolt.bright = bolt.arc ? 0.7 + Math.random() * 0.5 : 0.5 + Math.random() * 0.7
       } else if (!bolt.pa.equals(bolt.a) || !bolt.pb.equals(bolt.b)) this.drag(bolt)
-      const k = bolt.age / bolt.life
+      // fade over the life after the leader has landed
+      const k = bolt.grow > 0 ? Math.max(0, bolt.age - bolt.grow) / Math.max(0.01, bolt.life - bolt.grow) : bolt.age / bolt.life
       const fade = bolt.arc ? Math.min(1, (1 - k) * 4) : k < 0.12 ? 1.3 : Math.pow(1 - k, 1.4)
       const alpha = fade * bolt.bright * bolt.intensity
       const reach = bolt.grow > 0 ? Math.min(1, bolt.age / bolt.grow) : 1
@@ -521,7 +593,7 @@ export class Lightning {
     this.root.visible = ni > 0
     this.geo.setDrawRange(0, ni)
     if (ni > 0) {
-      for (const name of ['position', 'aTan', 'aCol', 'aParams'] as const) {
+      for (const name of ATTRS) {
         const attr = this.geo.attributes[name] as THREE.BufferAttribute
         attr.clearUpdateRanges()
         attr.addUpdateRange(0, nv * attr.itemSize)
@@ -549,7 +621,7 @@ export class Lightning {
         const t = l === 0 ? i / (n - 1) : bolt.lineAt[l]
         const p = (start + i) * 3
         bolt.pts[p] += dax + (dbx - dax) * t
-        bolt.pts[p + 1] = Math.max(GROUND, bolt.pts[p + 1] + day + (dby - day) * t)
+        bolt.pts[p + 1] += day + (dby - day) * t
         bolt.pts[p + 2] += daz + (dbz - daz) * t
       }
     }
@@ -565,13 +637,13 @@ export class Lightning {
     if (bolt.light && this.lightCd <= 0) {
       this.lightCd = 0.05
       _c.copy(bolt.color).lerp(_c.setRGB(1, 1, 1), 0.5)
-      this.fx.light(_b.copy(bolt.b).addScaledVector(UP, 1), _c, (40 + len * 12) * bolt.intensity, 12 + len * 0.8, 14)
+      this.fx.light(_b.copy(bolt.b).addScaledVector(UP, 1), _c, (30 + len * 8) * bolt.intensity, 10 + len * 0.6, 14)
     }
     if (bolt.sparks) {
       _sparkCol[0] = Math.min(1, bolt.color.r * 0.5 + 0.6)
       _sparkCol[1] = Math.min(1, bolt.color.g * 0.5 + 0.55)
       _sparkCol[2] = Math.min(1, bolt.color.b * 0.5 + 0.5)
-      this.fx.spark(bolt.b, UP, 6 + Math.min(14, len), 4 + Math.min(10, len * 0.4), _sparkCol, 0.05)
+      this.fx.spark(bolt.b, UP, 2 + Math.min(6, len * 0.25), 3 + Math.min(8, len * 0.3), _sparkCol, 0.035)
     }
   }
 }

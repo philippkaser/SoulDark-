@@ -5,7 +5,11 @@ import { emptyFrame, type InputFrame } from '../input/input'
 import type { Quality } from '../state/settings'
 import { useUI, type BossBar } from '../state/store'
 import { CameraRig } from './camera'
+import { Aura } from './fx/aura'
+import { groundLattice } from './fx/decal'
 import { Fx } from './fx/fx'
+import { Levitation } from './fx/levitate'
+import { Lightning } from './fx/lightning'
 import { Slicer } from './fx/slicer'
 import { Player } from './player/Player'
 import { Slashes } from './player/slashes'
@@ -67,6 +71,12 @@ export class Game {
   readonly player: Player
   readonly slashes: Slashes
   readonly score = new Score()
+  /** Branching bolts and sustained arcs (the hero's clock). */
+  readonly lightning: Lightning
+  /** The hero's visible power: flame shell, envelope, ground ring, rising sparks. */
+  readonly aura: Aura
+  /** Rocks torn out of the ground by the hero's power, and the cracks under them. */
+  readonly levitate: Levitation
   readonly wind = new THREE.Vector3(1.6, 0, -0.5)
   private windGust = new THREE.Vector3()
   readonly sun: THREE.DirectionalLight
@@ -124,6 +134,13 @@ export class Game {
       pool.uniforms.uTerrainHalf.value = this.terrain.half
     }
     this.fx.ghosts.bind(this.player.model)
+    const cell = groundLattice(this.ground, this.terrain.half)
+    this.lightning = new Lightning(this.fx, this.q)
+    this.lightning.ground = this.terrain
+    this.aura = new Aura(this.player.model, this.fx, this.lightning, this.q, cell)
+    this.aura.setGround(this.terrain)
+    this.levitate = new Levitation(this.fx, this.scorch, this.q, cell)
+    this.levitate.setGround(this.terrain)
 
     // light: the eclipse's corona from the north, a bruised sky above
     this.sun = new THREE.DirectionalLight('#ffb27a', 2.2)
@@ -140,6 +157,7 @@ export class Game {
 
     this.root.add(this.sky.mesh, this.ground, this.props.root, this.fx.root, this.slicer.root, this.slashes.root)
     this.root.add(this.player.model.container, this.sun, this.sun.target, this.fill, rimBack)
+    this.root.add(this.aura.root, this.levitate.root, this.lightning.root)
     this.damageables.push(this.props)
     this.player.reset()
     this.cam.snap(this.player.pos, Math.PI)
@@ -298,6 +316,9 @@ export class Game {
     this.scorch.clear()
     this.terrain.reset()
     this.fx.clear()
+    this.lightning.clear()
+    this.aura.reset()
+    this.levitate.clear()
     this.slicer.clear()
     this.slashes.clear()
     this.props.reset()
@@ -357,6 +378,11 @@ export class Game {
     const big = this.player.state === 'charge' ? this.player.charge * 3 : 0
     this.cam.update(rdt, frame.lookX, frame.lookY, { pos: this.player.pos, framing: big + this.framing }, this.camera, playing && inputEnabled)
     this.ambience(wdt)
+    // the hero's power: flames and lightning on his clock, rocks on the world's
+    this.aura.update(pdt, wdt)
+    this.levitate.eye.copy(this.camera.position)
+    this.levitate.update(wdt)
+    this.lightning.update(pdt, this.camera, this.viewportH)
     this.fx.update(wdt, rdt, this.camera, this.viewportH)
     this.sky.update(rdt, this.camera, true)
     this.post.update(rdt)
