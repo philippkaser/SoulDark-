@@ -146,7 +146,7 @@ export class Mountains {
       const mat = new THREE.ShaderMaterial({
         vertexShader: ridgeVert,
         fragmentShader: ridgeFrag,
-        uniforms: { ...this.common, ...carves, uRing: { value: ring }, uRadius: { value: ridge.def.radius }, uVeins: { value: ring === 0 ? 0.7 : 0.45 } },
+        uniforms: { ...this.common, ...carves, uRing: { value: ring }, uRadius: { value: ridge.def.radius }, uVeins: { value: ring === 0 ? 0.55 : 0.2 } },
         fog: false,
       })
       const mesh = new THREE.Mesh(ringGeometry(ridge, cols), mat)
@@ -207,7 +207,7 @@ export class Mountains {
     }
     this.boulders = new Boulders(Math.round(200 * q), this.common)
     this.boulders.onLand = (x, y, z, s) => {
-      if (Math.random() < 0.6) this.billows.spawn(_p.set(x, y + s * 0.5, z), _v.set(rnd(-4, 4), 3, rnd(-4, 4)), s * 1.6, rnd(6, 10), { grow: 1.6, alpha: 0.5, dark: 0.2, drag: 0.8, flow: true })
+      if (Math.random() < 0.6) this.billows.spawn(_p.set(x, y + s * 0.5, z), _v.set(rnd(-4, 4), 3, rnd(-4, 4)), s * 1.6, rnd(6, 10), { grow: 0.8, alpha: 0.6, dark: 0.2, drag: 0.8, flow: true })
     }
     this.billows = new Billows(Math.round(340 * q), {
       ...this.common,
@@ -468,7 +468,7 @@ export class Mountains {
     const mouth = this.outOfRock(_q.copy(p), back, R * 0.1, R * 2).clone()
     const z = this.zoom(mouth)
     // the flash: light outruns everything
-    fx.flare(mouth, R * 3, '#fff0d8', 0.5, 0.9)
+    fx.flare(mouth, R * 2, '#fff0d8', 0.45, 0.8)
     g.sky.flash(_v.subVectors(mouth, g.camera.position).normalize(), 0.7, '#ffc890')
     g.post.rays(mouth, 1.4, 2.8, '#ffcf9a')
     g.post.streak(0.9, mouth)
@@ -492,7 +492,7 @@ export class Mountains {
       this.boulders.spawn(_q, _v, size, Math.random() < 0.5 ? rnd(0.4, 1.4) : 0, rnd(14, 22))
     }
     // a collar of dust rolls out of the mouth, then pours down the face
-    const nd = Math.round(28 * q)
+    const nd = Math.round(40 * q)
     for (let i = 0; i < nd; i++) {
       const a = (i / nd) * TAU + rnd(-0.1, 0.1)
       const ca = Math.cos(a)
@@ -500,7 +500,7 @@ export class Mountains {
       _q.copy(p).addScaledVector(_e1, ca * R * 1.05).addScaledVector(_e2, sa * R * 1.05)
       this.outOfRock(_q, back, 4, R * 3)
       _v.copy(back).multiplyScalar(rnd(12, 40)).addScaledVector(_e1, ca * rnd(14, 34)).addScaledVector(_e2, sa * rnd(14, 34))
-      this.billows.spawn(_q, _v, rnd(22, 40), rnd(16, 26), { grow: 2.2, alpha: 0.78, heat: rnd(0.4, 1.2), cool: 0.3, dark: rnd(0.25, 0.65), drag: 0.45, flow: true })
+      this.billows.spawn(_q, _v, rnd(22, 40), rnd(16, 26), { grow: 0.8, alpha: 0.9, heat: rnd(0.4, 1.2), cool: 0.3, dark: rnd(0.25, 0.65), drag: 0.45, flow: true })
     }
     this.thunder(p, R / 60, 'bore')
   }
@@ -535,7 +535,7 @@ export class Mountains {
       this.boulders.spawn(_q, _v, size, rnd(0.3, 1.5), rnd(14, 22))
     }
     // a jet of pulverised rock, and a column that climbs over the crest
-    const nd = Math.round(30 * q)
+    const nd = Math.round(44 * q)
     for (let i = 0; i < nd; i++) {
       const a = Math.random() * TAU
       const ca = Math.cos(a)
@@ -545,7 +545,7 @@ export class Mountains {
       _v.copy(d).multiplyScalar(rnd(40, 170)).addScaledVector(_e1, ca * 18).addScaledVector(_e2, sa * 18)
       _v.y += rnd(5, 30)
       const rise = i % 3 === 0
-      this.billows.spawn(_q, _v, rnd(30, 60), rnd(18, 30), { grow: 2.4, alpha: 0.8, heat: rnd(0.6, 1.6), cool: 0.25, dark: rnd(0.3, 0.7), drag: 0.45, buoy: rise ? 9 : 2, flow: !rise })
+      this.billows.spawn(_q, _v, rnd(30, 55), rnd(18, 30), { grow: 0.9, alpha: 0.9, heat: rnd(0.6, 1.6), cool: 0.25, dark: rnd(0.3, 0.7), drag: 0.45, buoy: rise ? 9 : 2, flow: !rise })
     }
     this.thunder(p, R / 60, 'exit')
   }
@@ -560,7 +560,7 @@ export class Mountains {
     const hot = Math.exp(-b.age / 10)
     _v.copy(_w).multiplyScalar(rnd(4, 10))
     _v.y += rnd(4, 9)
-    this.billows.spawn(_q, _v, rnd(14, 24), rnd(10, 16), { grow: 2.4, alpha: 0.42, heat: hot * 0.9, cool: 0.2, dark: 0.75, drag: 0.6, buoy: 4 })
+    this.billows.spawn(_q, _v, rnd(14, 24), rnd(10, 16), { grow: 1.0, alpha: 0.5, heat: hot * 0.9, cool: 0.2, dark: 0.75, drag: 0.6, buoy: 4 })
   }
 
   /** The cut reaches the crest: the slot's rock is blasted up and out, its walls slide. */
@@ -612,14 +612,14 @@ export class Mountains {
       _v.copy(side).multiplyScalar(sd * rnd(4, 14))
       if (i % 3 === 0) this.boulders.spawn(_q, _v, rnd(3, 9), 0, rnd(14, 20))
       _q.y += 10
-      this.billows.spawn(_q, _v, rnd(20, 36), rnd(14, 24), { grow: 2, alpha: 0.7, heat: rnd(0, 0.5), dark: rnd(0.2, 0.55), drag: 0.4, flow: true, delay: rnd(0, 1.2) })
+      this.billows.spawn(_q, _v, rnd(20, 36), rnd(14, 24), { grow: 0.8, alpha: 0.85, heat: rnd(0, 0.5), dark: rnd(0.2, 0.55), drag: 0.4, flow: true, delay: rnd(0, 1.2) })
     }
     const nr = Math.round(12 * q)
     for (let i = 0; i < nr; i++) {
       _q.copy(top).addScaledVector(f, rnd(-60, 60)).addScaledVector(side, rnd(-1, 1) * w * 0.6)
       _q.y = hc + rnd(0, 20)
       _v.set(rnd(-10, 10), rnd(20, 50), rnd(-10, 10))
-      this.billows.spawn(_q, _v, rnd(26, 46), rnd(16, 26), { grow: 2.2, alpha: 0.65, heat: rnd(0.5, 1.2), dark: rnd(0.3, 0.6), drag: 0.5, buoy: 5 })
+      this.billows.spawn(_q, _v, rnd(26, 46), rnd(16, 26), { grow: 0.9, alpha: 0.8, heat: rnd(0.5, 1.2), dark: rnd(0.3, 0.6), drag: 0.5, buoy: 5 })
     }
     this.thunder(top, depth / 90, 'notch')
   }

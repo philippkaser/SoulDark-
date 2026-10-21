@@ -209,11 +209,15 @@ void main() {
   albedo *= 1.0 - 0.7 * scorch;
   vec3 col = mtnLight(albedo, n, v);
 
-  // faint lava veins: broken lines along cell borders that breathe slowly
-  vec3 vor = gVoronoi(vec2(s * 0.011, p.y * 0.016));
-  float vein = smoothstep(0.06, 0.0, vor.y - vor.x) * smoothstep(0.55, 0.8, gNoise(vec2(s * 0.004, p.y * 0.006) + vor.z));
-  vein *= 0.6 + 0.4 * sin(uTime * 0.7 + vor.z * 40.0);
-  vec3 emis = vec3(1.0, 0.2, 0.04) * vein * uVeins * smoothstep(-10.0, 30.0, p.y);
+  // faint lava veins: thin sinuous fissures (an iso-line of a smooth field, a pixel or two wide
+  // at any zoom), glowing only along some stretches, breathing slowly
+  // the field is stretched vertically, so the lines run down the slopes like seeping lava
+  float vf = gNoise(vec2(s * 0.017, p.y * 0.0045)) + 0.35 * gNoise(vec2(s * 0.05, p.y * 0.013) + 7.3);
+  float vw = fwidth(vf);
+  float vein = (1.0 - smoothstep(0.0, vw * 1.3, abs(vf - 0.72))) * smoothstep(0.1, 0.03, vw);
+  vein *= smoothstep(0.6, 0.8, gNoise(vec2(s * 0.0035, p.y * 0.006) + 3.7));
+  vein *= (0.55 + 0.45 * sin(uTime * 0.6 + s * 0.013 + p.y * 0.02)) * smoothstep(-10.0, 25.0, p.y) * smoothstep(0.45, 0.85, n.y + 0.6) ;
+  vec3 emis = vec3(1.0, 0.22, 0.04) * vein * uVeins;
   emis += heatColor(glow) + vec3(1.0, 0.55, 0.25) * flash * 1.2;
 
   float trans;
@@ -329,8 +333,9 @@ void main() {
   // scoured, glassy walls: strata dragged along the cut, darker deeper in
   vec3 albedo = mtnStrata(p, vUv.x * 0.7) * vec3(0.8, 0.72, 0.7);
   albedo *= 0.75 + 0.5 * gNoise(vUv * vec2(0.08, 0.02));
+  // deep in the cut the walls shade each other: only the lips catch the eclipse
   float lip = max(exp(-under / 14.0), exp(-vLip * 2.5));
-  vec3 col = mtnLight(albedo, n, v) * (0.35 + 0.65 * lip);
+  vec3 col = albedo * mtnAmbient(n) * 0.7 + (mtnLight(albedo, n, v) - albedo * mtnAmbient(n)) * lip * 0.6;
   // molten: the whole cut glows at first, then only the lips and a web of cracks stay hot
   vec3 vor = gVoronoi(vUv * vec2(0.05, 0.03));
   float crack = smoothstep(0.08, 0.0, vor.y - vor.x);
@@ -376,12 +381,13 @@ void main() {
   vec3 n = normalize(vNormal);
   vec3 v = normalize(cameraPosition - vWorld);
   float k = gNoise(vObj.xy * 3.0 + vObj.z * 1.7);
-  vec3 albedo = mix(vec3(0.06, 0.042, 0.04), vec3(0.14, 0.09, 0.07), k);
-  vec3 col = mtnLight(albedo, n, v);
+  vec3 albedo = mix(vec3(0.04, 0.03, 0.028), vec3(0.1, 0.065, 0.05), k);
+  vec3 col = mtnLight(albedo, n, v) * 0.8;
   float trans;
   col = mtnAerial(col, vWorld, trans);
-  float crack = smoothstep(0.35, 0.65, gNoise(vObj.xz * 4.0 + 3.0));
-  col += heatColor(vHeat * (0.5 + crack)) * sqrt(trans);
+  // molten seams; the whole slab glows only while it is white hot
+  float crack = smoothstep(0.08, 0.0, abs(gNoise(vObj.xz * 3.0 + vObj.y * 2.0) - 0.5));
+  col += heatColor(vHeat * (crack * 1.2 + smoothstep(0.8, 1.5, vHeat) * 0.4)) * sqrt(trans);
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }
@@ -428,8 +434,9 @@ void main() {
   float r = length(vUv);
   if (r > 1.0) discard;
   vec2 q = vUv * 1.6 + vB.x * 17.0;
-  float nz = gNoise(q) * 0.55 + gNoise(q * 2.4 + 5.0) * 0.3 + gNoise(q * 5.1 + 9.0) * 0.15;
-  float shape = smoothstep(1.0, 0.2, r + (nz - 0.5) * 0.9);
+  float nz = gNoise(q) * 0.5 + gNoise(q * 2.4 + 5.0) * 0.3 + gNoise(q * 5.1 + 9.0) * 0.2;
+  // a cauliflower edge that always dies before the quad's rim
+  float shape = smoothstep(0.95, 0.25, r + (nz - 0.5) * 1.1) * smoothstep(1.0, 0.72, r);
   // soft contact with the slopes and the plain: no hard line where the billboard meets the rock
   float ground = max(max(ridgeH(uHF0, uHFR0, vWorld), ridgeH(uHF1, uHFR1, vWorld)), 0.0);
   shape *= smoothstep(0.0, vA.x * 0.35, vWorld.y - ground);
@@ -442,14 +449,16 @@ void main() {
   vec3 up = cross(vdir, right);
   vec3 wn = normalize(right * nrm.x + up * nrm.y + vdir * nrm.z);
   float diff = clamp(dot(wn, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
-  vec3 base = mix(vec3(0.3, 0.24, 0.21), vec3(0.11, 0.085, 0.08), vB.y);
-  vec3 col = base * (mtnAmbient(wn) * 1.3 + mtnSun() * diff * 0.55) * (0.8 + nz * 0.4);
+  vec3 base = mix(vec3(0.3, 0.24, 0.21), vec3(0.09, 0.07, 0.065), vB.y);
+  // self-shadowed: dense cores are darker than the thin, lit rims
+  vec3 col = base * (mtnAmbient(wn) * 1.2 + mtnSun() * diff * diff * 0.7) * (0.55 + nz * 0.5) * mix(1.0, 0.6, shape);
   float back = pow(max(dot(-vdir, uSunDir), 0.0), 6.0);
-  col += mtnSun() * back * pow(1.0 - shape, 2.0) * 1.4;
-  col += heatColor(vA.w * (0.6 + nz * 0.8) * (1.2 - r));
+  float lining = pow(1.0 - shape, 2.0) * smoothstep(-0.3, 0.6, dot(wn, uSunDir) + 0.3);
+  col += mtnSun() * back * lining * 1.2;
   float trans;
   col = mtnAerial(col, vWorld, trans);
-  gl_FragColor = vec4(col, a);
+  col += heatColor(vA.w * (0.5 + nz * 0.9) * (1.2 - r)) * sqrt(trans);
+  gl_FragColor = vec4(col, min(1.0, a));
   #include <colorspace_fragment>
 }
 `
