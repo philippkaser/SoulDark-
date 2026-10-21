@@ -175,9 +175,16 @@ void main() {
     float e = rr - R * (1.0 + 0.05 * (gNoise(q * 11.0 + vec2(seed, t * 0.05)) - 0.5));
     if (e < 0.0) discard;
     float k = e / A.w;
-    glow += carveHeat(since) * exp(-k * 7.0);
+    // a starburst of fractures radiating from the hole: hot, then scorched
+    float fr = gNoise(q * 3.2 + vec2(e * 0.012, seed * 2.3)) + 0.3 * gNoise(q * 9.0 + vec2(e * 0.04, seed));
+    float fw = fwidth(fr);
+    float frac = (1.0 - smoothstep(0.0, fw * 1.6, abs(fr - 0.62))) * smoothstep(0.12, 0.03, fw) * exp(-k * 1.3);
+    // they race outward from the rim in the first moments
+    float kf = min(2.5, since * 3.0);
+    frac *= 1.0 - smoothstep(kf - 0.15, kf + 0.05, k);
+    glow += carveHeat(since) * (exp(-k * 7.0) + frac * 0.9);
     flash += exp(-since * 2.2) * exp(-k * 1.4);
-    scorch = max(scorch, exp(-k * 2.2));
+    scorch = max(scorch, max(exp(-k * 2.2), frac * 0.8));
   }
 
   for (int j = 0; j < MAX_NOTCHES; j++) {
