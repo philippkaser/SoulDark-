@@ -147,7 +147,6 @@ export class Punch implements System {
   private pulseT = 0
   private arcT = 0
   private waves = [new Wave(), new Wave()]
-  private newest: Wave | null = null
   /** The release cinematic: set by its frame callback, so a shot that replaced it is never skipped by us. */
   private shotLive = false
   private shotT = 0
@@ -395,7 +394,6 @@ export class Punch implements System {
     // a steep wave leaves the ground quickly: tear only what it skims
     const tilt = Math.asin(clamp(w.dir.y, 0, 1))
     w.ground = p.altitude > 6 ? 0 : tilt < 0.03 ? SPRAY_LEN : Math.min(SPRAY_LEN, 14 / Math.tan(tilt))
-    this.newest = w
     this.aimTargets(w)
     w.mountain = g.boreMountains?.(w.origin, w.dir, 60, WAVE_SPEED) ?? -1
     this.releaseFx(w)
@@ -512,6 +510,8 @@ export class Punch implements System {
   /** Every hero frame: the cooldown, and letting any input cut the release cinematic short. */
   tick(dt: number, f: InputFrame, enabled: boolean) {
     this.cd -= dt
+    // a cutscene can take the hero out of the coil without a state change of ours
+    if (this.charging && this.g.player.state !== 'scharge') this.cancel()
     if (!this.charging) this.fx.placeGlow(_fist, 0, 0)
     const live = this.shotLive
     this.shotLive = false
@@ -526,13 +526,6 @@ export class Punch implements System {
       if (w.on) this.step(w, dt)
       this.placeFront(w, i * 2)
     })
-    const w = this.newest
-    if (w?.on) {
-      // the wake streams out behind the front and fades once it has run its course
-      const len = Math.max(1, Math.min(w.d, 1600))
-      const fade = 1 - smoothstep(0.6, 2.4, w.age)
-      this.fx.placeWake(w.origin, w.dir, len, VIS_R0 + len * VIS_TAN * 1.1, 1, 0.55 * fade)
-    } else this.fx.placeWake(_p, UP, 0, 0, 0, 0)
   }
 
   /** The travelling front: a colossal arch the width of the kill zone, and a tighter, brighter ring on the axis. */
@@ -658,7 +651,6 @@ export class Punch implements System {
     this.charge = 0
     this.full = false
     for (const w of this.waves) w.on = false
-    this.newest = null
     this.shotLive = false
     this.fx.clear()
   }

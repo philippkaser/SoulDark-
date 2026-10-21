@@ -3,8 +3,8 @@ import { NOISE3 } from './shaders'
 
 /**
  * The fist's own visual vocabulary: pressure rings racing down the line of a
- * punch, the vapor cone that snaps around the fist, the long translucent wake
- * of compressed air, and the glow gathered in the fist while it charges.
+ * punch, the vapor cone that snaps around the fist, the Serious Punch's
+ * travelling shock arch, and the glow gathered in the fist while it charges.
  * Everything is additive and fairly dim on purpose: big moments read through
  * shape and motion, not more white.
  */
@@ -127,55 +127,6 @@ function vaporMat() {
   })
 }
 
-/** The wake: a long funnel of compressed air streaming down the line of the punch. */
-function wakeMat() {
-  return new THREE.ShaderMaterial({
-    uniforms: { uAlpha: { value: 0 }, uTime: { value: 0 }, uReach: { value: 1 }, uLen: { value: 100 }, uSeed: { value: 0 }, uColor: { value: new THREE.Color(1, 0.88, 0.7) } },
-    vertexShader: /* glsl */ `
-      varying vec3 vN;
-      varying vec3 vView;
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vN = normalize(mat3(modelMatrix) * normal);
-        vView = normalize(cameraPosition - wp.xyz);
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform float uAlpha;
-      uniform float uTime;
-      uniform float uReach;
-      uniform float uLen;
-      uniform float uSeed;
-      uniform vec3 uColor;
-      varying vec3 vN;
-      varying vec3 vView;
-      varying vec2 vUv;
-      ${NOISE3}
-      void main() {
-        // uv.y runs from the fist (0) to the far end (1)
-        float y = vUv.y;
-        if (y > uReach) discard;
-        float f = 1.0 - abs(dot(normalize(vN), vView));
-        // long streamers racing away from the fist
-        float m = uLen / 40.0;
-        float s = fbm3(vec3(vUv.x * 22.0, y * m - uTime * 2.4, uSeed));
-        float streak = smoothstep(0.45, 0.8, s);
-        float head = smoothstep(uReach - 0.04, uReach, y) * 1.5;
-        float v = (streak * (0.3 + 0.7 * f * f) + head * f) * smoothstep(0.0, 0.02, y);
-        // dimmer far away, so the horizon does not glow
-        v *= mix(1.0, 0.35, y);
-        gl_FragColor = vec4(uColor * v * uAlpha, 1.0);
-      }`,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-    fog: false,
-  })
-}
-
 function glowMat() {
   return new THREE.ShaderMaterial({
     uniforms: { uColor: { value: new THREE.Color(1, 0.85, 0.6) }, uAlpha: { value: 0 }, uTime: { value: 0 } },
@@ -237,7 +188,7 @@ interface Vapor {
   a0: number
 }
 
-/** A held effect the caller places every frame (the Serious Punch's travelling front, its wake). */
+/** A held effect the caller places every frame (the Serious Punch's travelling front). */
 export interface Held {
   readonly mesh: THREE.Mesh
   readonly mat: THREE.ShaderMaterial
@@ -257,9 +208,8 @@ export class PunchFx {
   readonly root = new THREE.Group()
   private rings: Ring[] = []
   private vapors: Vapor[] = []
-  /** The Serious Punch's moving fronts (two rings for each of two waves) and its wake. */
+  /** The Serious Punch's moving fronts (two rings for each of two waves). */
   readonly front: Held[] = []
-  readonly wake: Held
   /** The light gathered in the fist while it charges. */
   readonly glow: THREE.Mesh
   private glowMat: THREE.ShaderMaterial
@@ -296,16 +246,6 @@ export class PunchFx {
       this.root.add(mesh)
       this.front.push({ mesh, mat })
     }
-    // a unit funnel along +z: radius 1 at the far end, `start` (set per use via scale) at the fist
-    const tube = new THREE.CylinderGeometry(1, 0.06, 1, 48, 24, true).translate(0, 0.5, 0).rotateX(Math.PI / 2)
-    // cylinder uv.y runs bottom (0) to top (1): bottom is the fist after the rotation
-    const wm = wakeMat()
-    const wake = new THREE.Mesh(tube, wm)
-    wake.visible = false
-    wake.frustumCulled = false
-    wake.renderOrder = 10
-    this.root.add(wake)
-    this.wake = { mesh: wake, mat: wm }
     this.glowMat = glowMat()
     this.glow = new THREE.Mesh(quad, this.glowMat)
     this.glow.visible = false
@@ -383,20 +323,6 @@ export class PunchFx {
     u.uColor.value.set('#ffe6c4')
   }
 
-  /** Place the wake: a funnel from `a` along `dir`, `len` long, opening to `radius`; `reach` 0..1 of it drawn. */
-  placeWake(a: THREE.Vector3, dir: THREE.Vector3, len: number, radius: number, reach: number, alpha: number) {
-    const w = this.wake
-    w.mesh.visible = alpha > 0.001 && len > 1
-    if (!w.mesh.visible) return
-    w.mesh.position.copy(a)
-    w.mesh.quaternion.setFromUnitVectors(Z, dir)
-    w.mesh.scale.set(radius, radius, len)
-    const u = w.mat.uniforms
-    u.uAlpha.value = alpha
-    u.uReach.value = reach
-    u.uLen.value = len
-  }
-
   /** The fist's gathered light this frame (size in metres; 0 hides it). */
   placeGlow(p: THREE.Vector3, size: number, alpha: number) {
     this.glow.visible = alpha > 0.001
@@ -408,7 +334,6 @@ export class PunchFx {
 
   hideHeld() {
     for (const f of this.front) f.mesh.visible = false
-    this.wake.mesh.visible = false
     this.glow.visible = false
   }
 
@@ -421,8 +346,6 @@ export class PunchFx {
   /** World dt: a stopped world holds every ring in place. */
   update(dt: number) {
     this.time += dt
-    this.wake.mat.uniforms.uTime.value = this.time
-    this.wake.mat.uniforms.uSeed.value = 3.7
     this.glowMat.uniforms.uTime.value = this.time
     for (const r of this.rings) {
       if (!r.on) continue
