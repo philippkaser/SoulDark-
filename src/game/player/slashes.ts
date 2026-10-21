@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { Shape } from '../../engine/geom'
+import type { ParticleStyle } from '../../engine/gpuParticles'
 import type { Game } from '../Game'
 import { crescentGeometry, crescentMaterial } from '../fx/shaders'
 import { newHitId, type HitKind } from '../types'
@@ -44,6 +45,13 @@ const _y = new THREE.Vector3()
 const _m = new THREE.Matrix4()
 const _p = new THREE.Vector3()
 const _a = new THREE.Vector3()
+const _q = new THREE.Vector3()
+const _o = new THREE.Vector3()
+const SPAN = Math.PI * 0.82
+
+// glittering trails shed by the crescents: twinkling glints that hang, and fine sparks peeling off the edge
+const GLINT: ParticleStyle = { c0: [4.5, 3.6, 2.2, 1], c1: [1.6, 0.7, 0.2, 0], s0: 0.13, s1: 0.04, drag: 3, gravity: -0.4, curl: 0.5, curlFreq: 0.6, flicker: 0.85, core: 1, fadeIn: 0 }
+const PEEL: ParticleStyle = { c0: [5, 3.8, 2, 1], c1: [1.6, 0.5, 0.1, 0], s0: 0.04, s1: 0.02, drag: 2.2, gravity: 6, stretch: 0.04, core: 0.9, fadeIn: 0 }
 
 /**
  * Flying slashes: crescents of light released by every swing. They cleave
@@ -160,7 +168,10 @@ export class Slashes {
       c.mesh.scale.setScalar(w)
       c.mat.uniforms.uAlpha.value = Math.min(1, c.life / (c.maxLife * 0.35)) * Math.min(1, age * 12 + 0.3)
       c.mat.uniforms.uTime.value += dt
-      if (c.visualOnly) continue
+      if (c.visualOnly) {
+        this.trail(c, w, dt)
+        continue
+      }
 
       // cleave everything along the swept path
       const shape: Shape = { t: 'capsule', a: c.prev, b: c.pos, r: w * 0.55 }
@@ -168,6 +179,8 @@ export class Slashes {
       const n = g.damage(shape, { id: c.id, kind: c.kind, dmg: c.dmg, power: c.power, origin: c.prev, dir: c.dir, plane, friendly: true })
       c.hits += n
       g.cutProjectiles(shape)
+      // a cleaving crescent sprays sparks from whatever it passes through
+      if (n > 0) g.fx.sparkShower(c.pos, c.dir, Math.min(240, 30 + n * 12), 18, 0.9)
 
       // skimming the ground: carve a glowing trench and kick up debris
       const groundY = c.pos.y - Math.abs(Math.cos(c.roll)) * 0.05 - Math.abs(Math.sin(c.roll)) * w * 0.5
@@ -181,8 +194,27 @@ export class Slashes {
           g.fx.dust(_p, 2, 1.2, 1.6)
           if (Math.random() < 0.5) g.fx.debris.burst(_p, 3, 7, 0.14, 0.6)
         }
-      } else if (Math.random() < dt * 30) {
-        g.fx.glow.spawn(c.pos, _p.copy(c.dir).multiplyScalar(-c.speed * 0.08), [1, 0.8, 0.45], 0.8, 0.12, 0.25, 0, 2)
+      }
+      this.trail(c, w, dt)
+    }
+  }
+
+  /** Glitter along the crescent's edge: glints that hang in the air and sparks peeling off. */
+  private trail(c: Crescent, w: number, dt: number) {
+    const light = this.game.fx.gpu.light
+    const n = Math.floor(dt * (150 + w * 70) * this.game.q + Math.random())
+    const q = c.mesh.quaternion
+    const fade = Math.min(1, c.life / (c.maxLife * 0.35))
+    for (let i = 0; i < n; i++) {
+      const a = (Math.random() - 0.5) * SPAN
+      _q.set(Math.sin(a), 0, Math.cos(a) - 1).multiplyScalar(w).applyQuaternion(q).add(c.pos)
+      // drift slowly off the blade's path
+      _p.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(1.5).addScaledVector(c.dir, c.speed * 0.04)
+      if (Math.random() < 0.7) light.emit(_q.x, _q.y, _q.z, _p.x, _p.y, _p.z, 0.3 + Math.random() * 0.5, GLINT, 0.6 + Math.random() * 0.9, fade)
+      else {
+        _o.subVectors(_q, c.pos).normalize()
+        _p.addScaledVector(c.dir, c.speed * 0.15).addScaledVector(_o, 6 + Math.random() * 6)
+        light.emit(_q.x, _q.y, _q.z, _p.x, _p.y, _p.z, 0.25 + Math.random() * 0.3, PEEL, 0.7 + Math.random() * 0.8, fade)
       }
     }
   }
