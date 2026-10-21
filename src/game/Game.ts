@@ -65,6 +65,8 @@ export class Game {
   readonly scorch = new ScorchMap()
   /** The deformable ground: craters, trenches, heightAt for anything that stands on it. */
   readonly terrain: Terrain
+  /** Bores a tunnel through the mountains along a ray at the given wave speed (m/s); returns the distance to the mountain face, or -1. Set by the mountains. */
+  boreMountains: ((origin: THREE.Vector3, dir: THREE.Vector3, radius: number, speed: number) => number) | null = null
   readonly fx: Fx
   readonly slicer = new Slicer()
   readonly props: Props
@@ -272,6 +274,8 @@ export class Game {
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
     audio.rumble(0.6 * k, 3)
+    // a full cut carries on to the horizon and notches the mountains
+    this.props.mountains.cleave(a, fwd, k)
   }
 
   /** Points for Judgment's cuts: enemies first, then the air around the hero. */
@@ -373,6 +377,7 @@ export class Game {
     this.slashes.update(pdt)
     for (const s of this.systems) s.update(wdt, rdt)
     this.slicer.update(wdt)
+    this.props.update(wdt, rdt)
     this.props.root.updateMatrixWorld()
     this.scorch.update(rdt)
     this.terrain.update(rdt)

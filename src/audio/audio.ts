@@ -919,6 +919,52 @@ class AudioEngine {
     this.windFilter.frequency.setTargetAtTime(250 + wob * 500 + windiness * 600, t, 0.5)
     this.windGain.gain.setTargetAtTime(0.05 + wob * 0.08 + windiness * 0.25, t, 0.3)
   }
+
+  // -------------------------------------------------------------------------
+  // The mountains (call when the sound arrives: the distance delay is the caller's)
+  // -------------------------------------------------------------------------
+
+  /** A mountain face blown open kilometres away: distance has eaten the crack, leaving a deep, rolling boom. */
+  mountainBoom(pos: Vec, size = 1) {
+    if (!this.ctx || !this.allow('mtnBoom', 0.15)) return
+    const o = this.out(pos, 1.2, 900, 8000) ?? this.out(undefined, 1.2)!
+    const t = this.ctx.currentTime
+    const s = Math.min(2, Math.max(0.3, size))
+    this.burst(o, t, 0.35, 'lowpass', 1800, 200, 0.7 * s, 0.7, 0.01)
+    this.tone(o, 'sine', 46, 17, t, 3 + s * 1.5, 0.9 * Math.min(1, s), 0.02)
+    this.burst(o, t + 0.05, 5 + s * 3, 'lowpass', 420, 28, 0.9, 0.5, 0.08)
+    // the echo off the other ridges
+    this.burst(o, t + 1.1, 3, 'lowpass', 300, 40, 0.35 * s, 0.5, 0.3)
+    this.rumble(Math.min(1, 0.6 * s), 6 + s * 2)
+  }
+
+  /** A mountaintop sheared off by the Heaven Splitter: a cracking shear and a long grinding fall. */
+  mountainCleave(pos: Vec, size = 1) {
+    if (!this.ctx || !this.allow('mtnCleave', 0.2)) return
+    const o = this.out(pos, 1.2, 900, 8000) ?? this.out(undefined, 1.2)!
+    const t = this.ctx.currentTime
+    const s = Math.min(2, Math.max(0.3, size))
+    this.burst(o, t, 0.12, 'bandpass', 1400, 500, 0.5 * s, 1.2, 0.002)
+    this.tone(o, 'sine', 60, 22, t, 2.5 + s, 0.7 * Math.min(1, s), 0.01)
+    this.burst(o, t + 0.1, 4 + s * 2, 'lowpass', 600, 40, 0.75, 0.6, 0.2)
+    for (let i = 0; i < 6; i++) this.burst(o, t + 0.15 + i * rnd(0.12, 0.3), 0.18, 'lowpass', rnd(500, 900), 120, 0.25, 1)
+    this.rumble(Math.min(1, 0.5 * s), 5 + s * 2)
+  }
+
+  /** Rock pouring down a slope far away: a gravel roar with boulders knocking in it. */
+  rockslide(pos: Vec, dur = 5, level = 1) {
+    if (!this.ctx || !this.allow('rockslide', 0.3)) return
+    const o = this.out(pos, 1, 900, 8000) ?? this.out(undefined, 1)!
+    const t = this.ctx.currentTime
+    const l = Math.min(1.5, Math.max(0.2, level))
+    this.burst(o, t + 0.2, dur, 'lowpass', 700, 90, 0.3 * l, 0.6, dur * 0.25)
+    const n = Math.round(10 + dur * 4)
+    for (let i = 0; i < n; i++) {
+      const at = t + 0.3 + Math.random() * dur * 0.9
+      this.burst(o, at, rnd(0.08, 0.25), 'bandpass', rnd(120, 420), 80, rnd(0.1, 0.3) * l, 2)
+      if (Math.random() < 0.3) this.tone(o, 'sine', rnd(55, 90), 30, at, 0.3, 0.12 * l)
+    }
+  }
 }
 
 export const audio = new AudioEngine()
