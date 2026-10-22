@@ -30,11 +30,11 @@ const _c = new THREE.Color()
 const _tint: [number, number, number] = [1, 0.8, 0.4]
 
 /** Sparks of power streaming up off the body. */
-const RISE: ParticleStyle = { c0: [3.4, 2.4, 1.1, 1], c1: [1.4, 0.55, 0.12, 0], s0: 0.05, s1: 0.02, gravity: -5, drag: 1.2, curl: 0.9, curlFreq: 1.2, flicker: 0.5, core: 0.9, fadeIn: 0.05 }
+const RISE: ParticleStyle = { c0: [4.4, 3, 1.3, 1], c1: [1.4, 0.4, 0.08, 0], s0: 0.04, s1: 0.015, gravity: -7, drag: 1.4, curl: 1.8, curlFreq: 1.4, stretch: 0.07, flicker: 0.3, core: 0.95, fadeIn: 0.02 }
 /** The classic power lines: fast vertical streaks rising around the body. */
 const LINE: ParticleStyle = { c0: [2.6, 1.9, 0.9, 1], c1: [1.6, 0.8, 0.25, 0], s0: 0.035, s1: 0.02, gravity: -4, drag: 0.6, stretch: 0.055, core: 0.7, fadeIn: 0.12 }
 /** Pale dust lifted off the ground by the pressure of the power. */
-const LIFT: ParticleStyle = { c0: [1.6, 1.1, 0.55, 1], c1: [0.6, 0.3, 0.1, 0], s0: 0.06, s1: 0.03, gravity: -2.5, drag: 0.8, curl: 1.4, curlFreq: 0.6, flicker: 0.6, core: 0.4, fadeIn: 0.15 }
+const LIFT: ParticleStyle = { c0: [2.2, 1.4, 0.6, 1], c1: [0.7, 0.25, 0.06, 0], s0: 0.035, s1: 0.015, gravity: -4, drag: 1.2, curl: 2, curlFreq: 1.2, stretch: 0.06, flicker: 0.3, core: 0.9, fadeIn: 0.05 }
 
 const NOISE2 = /* glsl */ `
 float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }

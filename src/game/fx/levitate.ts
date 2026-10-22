@@ -107,7 +107,7 @@ const _pt2 = { x: 0, z: 0 }
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
 
 /** Hot stones shed embers as they fly. */
-const EMBER: ParticleStyle = { c0: [3.2, 1.1, 0.2, 1], c1: [1.2, 0.25, 0.04, 0], s0: 0.09, s1: 0.04, gravity: -1.5, drag: 1.5, curl: 0.8, curlFreq: 0.5, flicker: 0.5, core: 0.6, fadeIn: 0.05 }
+const EMBER: ParticleStyle = { c0: [4.6, 1.9, 0.35, 1], c1: [1.2, 0.2, 0.03, 0], s0: 0.04, s1: 0.018, gravity: -3, drag: 1.8, curl: 2.2, curlFreq: 1.3, stretch: 0.07, flicker: 0.3, core: 0.95, fadeIn: 0.02 }
 
 const _seg = new THREE.Vector3()
 const _foc = new THREE.Vector3()

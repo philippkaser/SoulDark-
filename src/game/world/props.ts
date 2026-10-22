@@ -7,7 +7,6 @@ import { mulberry32 } from '../../engine/math'
 import type { Game } from '../Game'
 import type { Damageable, Hit } from '../types'
 import { spireDefs, type SpireDef } from './layout'
-import { Mountains } from './mountains'
 
 interface Spire {
   def: SpireDef
@@ -64,11 +63,9 @@ function spireBaseGeometry(d: SpireDef, deep: number) {
   return g
 }
 
-/** Rock spires across the plain (sliceable) and the mountains on the horizon. */
+/** Rock spires across the plain (sliceable). */
 export class Props implements Damageable {
   readonly root = new THREE.Group()
-  /** The mountain rings on the horizon (boreable, notchable). */
-  readonly mountains: Mountains
   private spires: Spire[] = []
   private game: Game
   private mat: THREE.MeshStandardMaterial
@@ -78,16 +75,10 @@ export class Props implements Damageable {
     const tex = rockTexture()
     tex.repeat.set(2, 3)
     this.mat = standard({ color: '#6e625e', roughness: 0.95, map: tex, rim: 0.15, rimColor: '#ff9a60' })
-    this.mountains = new Mountains(game)
-    this.root.add(this.mountains.root)
-    game.boreMountains = (o, d, r, s) => this.mountains.bore(o, d, r, s)
     this.build()
   }
 
-  /** World dt (the carves, rubble and dust live on the world clock) and real dt. */
-  update(dt: number, rdt: number) {
-    this.mountains.update(dt, rdt)
-  }
+  update(_dt: number, _rdt: number) {}
 
   private build() {
     for (const s of this.spires) {
@@ -120,7 +111,6 @@ export class Props implements Damageable {
 
   reset() {
     this.build()
-    this.mountains.reset()
   }
 
   /** Collision circles for the hero and the legions. */

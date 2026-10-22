@@ -50,7 +50,7 @@ const _o = new THREE.Vector3()
 const SPAN = Math.PI * 0.82
 
 // glittering trails shed by the crescents: twinkling glints that hang, and fine sparks peeling off the edge
-const GLINT: ParticleStyle = { c0: [4.5, 3.6, 2.2, 1], c1: [1.6, 0.7, 0.2, 0], s0: 0.13, s1: 0.04, drag: 3, gravity: -0.4, curl: 0.5, curlFreq: 0.6, flicker: 0.85, core: 1, fadeIn: 0 }
+const GLINT: ParticleStyle = { c0: [5, 4, 2.4, 1], c1: [1.6, 0.6, 0.15, 0], s0: 0.06, s1: 0.015, drag: 3.5, gravity: 2, stretch: 0.05, flicker: 0.5, core: 1, fadeIn: 0 }
 const PEEL: ParticleStyle = { c0: [5, 3.8, 2, 1], c1: [1.6, 0.5, 0.1, 0], s0: 0.04, s1: 0.02, drag: 2.2, gravity: 6, stretch: 0.04, core: 0.9, fadeIn: 0 }
 
 /**

@@ -2,66 +2,122 @@ import * as THREE from 'three'
 import { NOISE_GLSL } from '../../engine/gfx/noise'
 import { PERTURB_GLSL } from '../../engine/gfx/triplanar'
 import type { Quality } from '../../state/settings'
+import { MAX_CUTS, type FarField } from './farField'
 import { SCORCH_HALF, type ScorchMap } from './scorch'
 import type { Terrain } from './terrain'
 
-/** Vertex displacement by the terrain heightfield (geometry lies in XZ, so object space is world space). */
-const TERRAIN_VERT = /* glsl */ `
+/** Shared by the vertex and fragment stages: height sampling and the mountains' fine relief. */
+const HEIGHT_GLSL = /* glsl */ `
 uniform sampler2D uHeight;
+uniform sampler2D uFar;
 uniform float uScorchHalf;
 uniform float uTexel;
+uniform float uFarHalf;
+uniform float uFarTexel;
 float tSample(vec2 uv) { return textureLod(uHeight, uv, 0.0).r; }
+float fSample(vec2 p) { return textureLod(uFar, p / (2.0 * uFarHalf) + 0.5, 0.0).r; }
+float mHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float mNoise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mHash(i), mHash(i + vec2(1, 0)), u.x), mix(mHash(i + vec2(0, 1)), mHash(i + vec2(1, 1)), u.x), u.y);
+}
+// sharp ridged relief that only grows on raised ground (the plain and canyon floors stay clean)
+float mDetail(vec2 p, float h, int oct) {
+  float amp = smoothstep(12.0, 160.0, h) * 46.0;
+  if (amp <= 0.0) return 0.0;
+  float s = 0.0;
+  float a = 1.0;
+  float f = 1.0 / 210.0;
+  for (int i = 0; i < 4; i++) {
+    if (i >= oct) break;
+    float n = 1.0 - abs(mNoise(p * f) * 2.0 - 1.0);
+    s += n * n * a;
+    a *= 0.48;
+    f *= 2.21;
+  }
+  return (s - 0.55) * amp;
+}
+float farH(vec2 p, int oct) { float h = fSample(p); return h + mDetail(p, h, oct); }
 `
 
 /**
- * The scorched plain: basalt and ash with a network of ember-lit cracks, plus
- * the battle's burns and glowing fissures from the scorch map. The field is
- * displaced by the terrain heightfield; steep crater walls turn to fractured,
- * stratified rock and deep wounds bleed lava.
+ * The battlefield floor and the mountains around it, one material in two
+ * modes: NEAR displaces the dense arena grid by the carved field (which
+ * already includes the far field under it), FAR displaces the coarse grid that
+ * runs out to the horizon by the far field plus procedural ridges. Both share
+ * the shading: basalt and ash with ember-lit cracks, stratified rock on steep
+ * ground, battle scars, and molten rock rendered as procedural crust and
+ * cracks so it stays crisp up close no matter how coarse the heat mask is.
  */
-export function groundMaterial(scorch: ScorchMap, terrain: Terrain, quality: Quality) {
+export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarField, quality: Quality, mode: 'near' | 'far', shared?: Record<string, THREE.IUniform>) {
   const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, metalness: 0 })
-  const uniforms = {
+  const uniforms: Record<string, THREE.IUniform> = shared ?? {
     uBurn: { value: scorch.burnTex },
     uGlow: { value: scorch.glowTex },
     uScorchHalf: { value: SCORCH_HALF },
     uEmber: { value: 1 },
     uTime: { value: 0 },
+    uClock: { value: 0 },
     uHeight: { value: terrain.tex },
     uTexel: { value: 1 / terrain.res },
+    uFar: { value: far.tex },
+    uFarHalf: { value: far.half },
+    uFarTexel: { value: 1 / far.res },
+    uCutA: { value: far.cutA },
+    uCutB: { value: far.cutB },
+    uAerial: { value: 0.00052 },
   }
   const detail = quality === 'low' ? 0 : 1
+  const isFar = mode === 'far' ? 1 : 0
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vGPos;\n${TERRAIN_VERT}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vGPos;\n${HEIGHT_GLSL}`)
       .replace(
         '#include <beginnormal_vertex>',
         /* glsl */ `
-        vec2 tUv = position.xz / (2.0 * uScorchHalf) + 0.5;
-        float tE = uTexel * 2.0;
-        vec3 objectNormal = normalize(vec3(
-          tSample(tUv - vec2(tE, 0.0)) - tSample(tUv + vec2(tE, 0.0)),
-          4.0 * tE * uScorchHalf,
-          tSample(tUv - vec2(0.0, tE)) - tSample(tUv + vec2(0.0, tE))));
+        #if ${isFar}
+          float fE = 2.0 * uFarHalf * uFarTexel;
+          vec3 objectNormal = normalize(vec3(
+            farH(position.xz - vec2(fE, 0.0), 2) - farH(position.xz + vec2(fE, 0.0), 2),
+            2.0 * fE,
+            farH(position.xz - vec2(0.0, fE), 2) - farH(position.xz + vec2(0.0, fE), 2)));
+        #else
+          vec2 tUv = position.xz / (2.0 * uScorchHalf) + 0.5;
+          float tE = uTexel * 2.0;
+          vec3 objectNormal = normalize(vec3(
+            tSample(tUv - vec2(tE, 0.0)) - tSample(tUv + vec2(tE, 0.0)),
+            4.0 * tE * uScorchHalf,
+            tSample(tUv - vec2(0.0, tE)) - tSample(tUv + vec2(0.0, tE))));
+        #endif
         #ifdef USE_TANGENT
           vec3 objectTangent = vec3(tangent.xyz);
         #endif`,
       )
-      .replace('#include <begin_vertex>', 'vec3 transformed = vec3(position);\ntransformed.y += tSample(tUv);')
+      .replace(
+        '#include <begin_vertex>',
+        /* glsl */ `vec3 transformed = vec3(position);
+        #if ${isFar}
+          transformed.y += farH(position.xz, 2);
+        #else
+          transformed.y += tSample(tUv);
+        #endif`,
+      )
       .replace('#include <project_vertex>', '#include <project_vertex>\nvGPos = (modelMatrix * vec4(transformed, 1.0)).xyz;')
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         /* glsl */ `#include <common>
         varying vec3 vGPos;
+        ${HEIGHT_GLSL}
         uniform sampler2D uBurn;
         uniform sampler2D uGlow;
-        uniform sampler2D uHeight;
-        uniform float uScorchHalf;
-        uniform float uTexel;
         uniform float uEmber;
         uniform float uTime;
+        uniform float uClock;
+        uniform float uAerial;
+        uniform vec4 uCutA[${MAX_CUTS}];
+        uniform vec4 uCutB[${MAX_CUTS}];
         ${NOISE_GLSL}
         ${PERTURB_GLSL}
         vec2 gWarp(vec2 p) { return p + vec2(gFbm(p * 0.21 + 1.7), gFbm(p * 0.21 + 9.2)) * 2.4; }
@@ -93,6 +149,52 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, quality: Qua
           float joint = smoothstep(0.05, 0.0, min(fx, 1.0 - fx)) * step(0.45, gHash11(floor(x) + layer * 13.0));
           crk = max(bed, joint);
           return clamp(shade * 0.55 + gNoise(p * vec2(0.6, 2.5)) * 0.3 + fy * 0.15, 0.0, 1.0);
+        }
+        // Molten rock for a heat k (0 cold .. 1+ liquid) at p (metres): a dark crust
+        // broken into irregular plates whose seams glow (some open, some nearly
+        // shut), finer cracks splitting the plates as it heats, the plates
+        // themselves going liquid at the top end. Far away the pattern melts
+        // into its average glow instead of shimmering.
+        vec3 molten(vec2 p, float k) {
+          vec2 q = p * 0.55;
+          q += vec2(gNoise(q * 0.45 + uTime * 0.03), gNoise(q * 0.45 + 5.3 - uTime * 0.025)) * 1.3;
+          float lod = clamp(length(fwidth(q)) * 2.2 - 0.25, 0.0, 1.0);
+          vec3 v = gVoronoi(q);
+          float open = gNoise(q * 0.8 + v.z * 13.0);
+          float w = mix(0.012, 0.2, clamp(k * k, 0.0, 1.0)) * (0.25 + open * 1.1);
+          float seam = smoothstep(w, w * 0.1, v.y - v.x);
+          vec3 v2 = gVoronoi(q * 3.3 + 11.0);
+          float fine = smoothstep(w * 0.45, 0.0, v2.y - v2.x) * smoothstep(0.5, 0.95, k);
+          float liquid = smoothstep(0.95, 1.35, k) * (0.4 + 0.6 * gNoise(q * 1.9 + uTime * 0.3));
+          float g = clamp(max(seam, fine * 0.6) + liquid, 0.0, 1.4);
+          g = mix(g, 0.12 + 0.3 * k, lod);
+          float t = k * (0.6 + 0.4 * fract(v.z * 7.13)) * (0.55 + 0.55 * g);
+          vec3 c = mix(vec3(0.45, 0.03, 0.006), vec3(1.9, 0.46, 0.06), smoothstep(0.08, 0.6, t));
+          c = mix(c, vec3(3.2, 1.9, 0.75), smoothstep(0.8, 1.35, t));
+          return c * g * smoothstep(0.02, 0.12, k);
+        }
+        // glow left in the walls and floors of the sword's canyons
+        float cutHeat(vec3 P, out float depthK) {
+          float heat = 0.0;
+          depthK = 0.0;
+          for (int i = 0; i < ${MAX_CUTS}; i++) {
+            vec4 B = uCutB[i];
+            if (B.w < 0.5) continue;
+            vec4 A = uCutA[i];
+            vec2 ab = A.zw - A.xy;
+            float L2 = max(dot(ab, ab), 1.0);
+            float t = clamp(dot(P.xz - A.xy, ab) / L2, 0.0, 1.0);
+            float d = length(P.xz - (A.xy + ab * t));
+            float inside = smoothstep(B.x * 1.35, B.x * 0.85, d);
+            if (inside <= 0.0) continue;
+            float age = max(0.0, uClock - B.y);
+            // the floor stays hot for a long time; the walls flash and cool within seconds
+            float lowK = exp(-max(0.0, P.y + B.z) / 22.0);
+            float h = inside * (exp(-age / 60.0) * (0.1 + 0.95 * lowK) + exp(-age / 2.5) * 0.45);
+            depthK = max(depthK, inside * smoothstep(-2.0, -25.0, P.y));
+            heat = max(heat, h);
+          }
+          return heat;
         }`,
       )
       .replace(
@@ -110,26 +212,45 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, quality: Qua
         vec3 ashCol = vec3(0.16, 0.135, 0.12) * (0.8 + gNoise(gp * 2.0) * 0.4);
         vec3 alb = mix(basalt, ashCol, ash * 0.7);
         alb *= 1.0 - crack * 0.6;
-        // battle scars
+        // battle scars (only on the arena field)
         vec2 suv = gp / (uScorchHalf * 2.0) + 0.5;
         float inside = step(0.0, suv.x) * step(suv.x, 1.0) * step(0.0, suv.y) * step(suv.y, 1.0);
-        float burn = texture2D(uBurn, suv).a * inside;
-        float heat = texture2D(uGlow, suv).r * inside;
-        // the carved terrain: per-pixel normal from the heightfield (sharper than the vertex grid)
-        vec3 tN = normalize(vec3(
-          texture2D(uHeight, suv - vec2(uTexel, 0.0)).r - texture2D(uHeight, suv + vec2(uTexel, 0.0)).r,
-          4.0 * uTexel * uScorchHalf,
-          texture2D(uHeight, suv - vec2(0.0, uTexel)).r - texture2D(uHeight, suv + vec2(0.0, uTexel)).r));
+        // the heat mask is coarse: wobble the lookup so its edges follow the rock, not the texels
+        vec2 wob = (vec2(gNoise(gp * 0.9), gNoise(gp * 0.9 + 4.1)) - 0.5) * uTexel * 1.6;
+        float burn = texture2D(uBurn, suv + wob).a * inside;
+        float heat = texture2D(uGlow, suv + wob).r * inside;
+        #if ${isFar}
+          float pE = 3.0;
+          vec3 tN = normalize(vec3(farH(gp - vec2(pE, 0.0), 4) - farH(gp + vec2(pE, 0.0), 4), 2.0 * pE, farH(gp - vec2(0.0, pE), 4) - farH(gp + vec2(0.0, pE), 4)));
+        #else
+          vec3 tN = normalize(vec3(
+            texture2D(uHeight, suv - vec2(uTexel, 0.0)).r - texture2D(uHeight, suv + vec2(uTexel, 0.0)).r,
+            4.0 * uTexel * uScorchHalf,
+            texture2D(uHeight, suv - vec2(0.0, uTexel)).r - texture2D(uHeight, suv + vec2(0.0, uTexel)).r));
+        #endif
         float cliff = smoothstep(0.1, 0.36, 1.0 - tN.y);
-        float carved = clamp(-vGPos.y, 0.0, 14.0);
+        float carved = clamp(-vGPos.y, 0.0, 60.0);
+        float cutDeep;
+        float cutK = cutHeat(vGPos, cutDeep);
         // rims and ejecta: pale crushed rock and ash
-        alb = mix(alb, ashCol * 1.3, smoothstep(0.1, 1.2, vGPos.y) * 0.55);
+        alb = mix(alb, ashCol * 1.3, smoothstep(0.1, 1.2, vGPos.y) * 0.55 * (1.0 - smoothstep(6.0, 30.0, vGPos.y)));
         alb *= 1.0 - burn * 0.82;
-        // deep bowls sit in their own shadow
+        // deep wounds sit in their own shadow
         alb *= 1.0 - 0.35 * smoothstep(0.5, 12.0, carved);
         float rockCrack = 0.0;
-        // walls are seen edge-on: fade their fine fractures by the true pixel footprint (derivatives outside the branch)
         float rlod = clamp(length(fwidth(vGPos)) * 1.4 - 0.15, 0.0, 1.0);
+        // the mountains: dark stratified basalt on the steeps, ash lying on the gentler slopes
+        float mtn = smoothstep(6.0, 45.0, vGPos.y);
+        if (mtn > 0.001) {
+          float mc;
+          float rk = gRock(vec2(gp.x * 0.35 + gp.y * 0.35, vGPos.y * 0.35), mc);
+          vec3 rock = mix(vec3(0.03, 0.022, 0.022), vec3(0.11, 0.075, 0.062), rk) * (1.0 - mc * 0.6 * (1.0 - rlod));
+          float lying = smoothstep(0.62, 0.86, tN.y);
+          vec3 drift = vec3(0.19, 0.16, 0.145) * (0.75 + 0.5 * gNoise(gp * 0.05));
+          vec3 m = mix(rock, drift, lying * (0.55 + 0.45 * smoothstep(80.0, 500.0, vGPos.y)));
+          alb = mix(alb, m, mtn);
+          gh = mix(gh, rk * 0.5, mtn * (1.0 - lying));
+        }
         if (cliff > 0.001) {
           float wx = tN.x * tN.x / (tN.x * tN.x + tN.z * tN.z + 1e-5);
           float c1;
@@ -144,6 +265,8 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, quality: Qua
           alb = mix(alb, rock, cliff);
           gh = mix(gh, rk * 0.6 - rockCrack * 0.7, cliff);
         }
+        // freshly cut faces are scorched black
+        alb *= 1.0 - 0.6 * smoothstep(0.05, 0.5, cutK);
         diffuseColor.rgb *= alb;`,
       )
       .replace(
@@ -157,19 +280,33 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, quality: Qua
         float pulse = 0.7 + 0.3 * sin(uTime * 1.3 + cv.z * 30.0);
         vec3 bv = cv;
         float jag = (gNoise(gp * 3.0) - 0.5) * 0.01;
-        float lava = smoothstep(0.006, 0.0, bv.y - bv.x + jag) * step(0.82, bv.z) * smoothstep(0.55, 0.8, gNoise(gp * 0.05 + 4.0));
+        float lava = smoothstep(0.006, 0.0, bv.y - bv.x + jag) * step(0.82, bv.z) * smoothstep(0.55, 0.8, gNoise(gp * 0.05 + 4.0)) * (1.0 - mtn);
         totalEmissiveRadiance += vec3(1.0, 0.2, 0.03) * lava * 0.3 * pulse * uEmber;
-        float hn = gNoise(gp * 1.5 - uTime * 0.3);
-        float hot = heat * heat;
-        totalEmissiveRadiance += mix(vec3(0.9, 0.12, 0.02), vec3(2.2, 0.9, 0.25), hot) * heat * (0.6 + hn * 0.9);
-        // fresh walls split open along their fractures
-        totalEmissiveRadiance += vec3(2.2, 0.6, 0.12) * rockCrack * cliff * heat * heat * 2.4;
+        // molten scars: the coarse heat mask drives crisp procedural crust and cracks
+        float mk = max(heat * 1.15, cutK);
+        if (mk > 0.015) {
+          vec2 mp = mix(gp, vec2(gp.x + gp.y, vGPos.y * 1.3), max(cliff, step(0.01, cutK) * (1.0 - tN.y)));
+          vec3 lavaC = molten(mp, mk);
+          totalEmissiveRadiance += lavaC * (1.0 + rockCrack * cliff * 1.5);
+          // a dull red underglow so the crust between the seams still reads as hot
+          totalEmissiveRadiance += vec3(0.35, 0.03, 0.005) * smoothstep(0.05, 0.6, mk) * mk;
+        }
         // the floors of the deepest wounds pool lava along their cracks
-        float wound = smoothstep(6.0, 13.0, carved) * smoothstep(0.45, 0.75, gNoise(gp * 0.06 + 7.0)) * (1.0 - cliff);
-        totalEmissiveRadiance += vec3(1.0, 0.22, 0.03) * crack * wound * 0.35 * pulse * uEmber;`,
+        float wound = max(smoothstep(6.0, 13.0, carved), cutDeep) * smoothstep(0.45, 0.75, gNoise(gp * 0.06 + 7.0)) * (1.0 - cliff);
+        totalEmissiveRadiance += vec3(1.0, 0.22, 0.03) * crack * wound * 0.45 * pulse * uEmber;`,
+      )
+      .replace(
+        '#include <fog_fragment>',
+        /* glsl */ `#ifdef USE_FOG
+        // aerial perspective: gentler than the scene fog so the ranges read as layered silhouettes,
+        // and thinner up high so the peaks stand out of the haze
+        float fogFactor = 1.0 - exp(-vFogDepth * uAerial);
+        fogFactor *= mix(1.0, 0.55, smoothstep(40.0, 700.0, vGPos.y));
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+        #endif`,
       )
   }
-  mat.customProgramCacheKey = () => `ground-v2-${detail}`
+  mat.customProgramCacheKey = () => `ground-v3-${detail}-${mode}`
   mat.userData.ground = uniforms
   return mat
 }
@@ -178,39 +315,101 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, quality: Qua
 function groundDepthMaterial(uniforms: Record<string, THREE.IUniform>) {
   const m = new THREE.MeshDepthMaterial()
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.uHeight = uniforms.uHeight
-    shader.uniforms.uScorchHalf = uniforms.uScorchHalf
-    shader.uniforms.uTexel = uniforms.uTexel
+    Object.assign(shader.uniforms, uniforms)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${TERRAIN_VERT}`)
+      .replace('#include <common>', `#include <common>\n${HEIGHT_GLSL}`)
       .replace('#include <begin_vertex>', 'vec3 transformed = vec3(position);\ntransformed.y += tSample(position.xz / (2.0 * uScorchHalf) + 0.5) - 0.12;')
   }
-  m.customProgramCacheKey = () => 'ground-depth-v1'
+  m.customProgramCacheKey = () => 'ground-depth-v2'
   return m
 }
 
 /**
- * The battlefield floor: a dense displaced grid over the terrain field and a
- * flat outer plain (with a matching square hole) out to the horizon.
+ * Grid coordinates along one axis: evenly spaced across the arena square
+ * (+/- inner), then geometrically wider out to +/- outer, so detail is spent
+ * near the player and the mountains still get a few hundred rows.
  */
-export function buildGround(scorch: ScorchMap, terrain: Terrain, quality: Quality) {
-  const mat = groundMaterial(scorch, terrain, quality)
+export function axisPoints(inner: number, innerStep: number, outer: number, n: number) {
+  const k = Math.max(1, Math.round(inner / innerStep))
+  const s0 = inner / k
+  // solve s0 * (r^n - 1) / (r - 1) = outer - inner for the growth ratio
+  const span = outer - inner
+  let lo = 1.000001
+  let hi = 2
+  for (let i = 0; i < 60; i++) {
+    const r = (lo + hi) / 2
+    if ((s0 * (Math.pow(r, n) - 1)) / (r - 1) > span) hi = r
+    else lo = r
+  }
+  const r = (lo + hi) / 2
+  const out: number[] = []
+  for (let i = -k; i <= k; i++) out.push((i * inner) / k)
+  let p = inner
+  let s = s0
+  for (let i = 0; i < n; i++) {
+    p += s
+    s *= r
+    out.push(Math.min(p, outer), -Math.min(p, outer))
+  }
+  return out.sort((a, b) => a - b)
+}
+
+/** A grid over +/- outer on x and z, with the arena square (+/- inner) left out: the arena has its own dense mesh. */
+export function farGrid(inner: number, innerStep: number, outer: number, n: number) {
+  const ax = axisPoints(inner, innerStep, outer, n)
+  const m = ax.length
+  const pos = new Float32Array(m * m * 3)
+  for (let j = 0; j < m; j++) {
+    for (let i = 0; i < m; i++) {
+      const k = (j * m + i) * 3
+      pos[k] = ax[i]
+      pos[k + 2] = ax[j]
+    }
+  }
+  const idx: number[] = []
+  const e = 1e-3
+  for (let j = 0; j < m - 1; j++) {
+    for (let i = 0; i < m - 1; i++) {
+      const inX = ax[i] >= -inner - e && ax[i + 1] <= inner + e
+      const inZ = ax[j] >= -inner - e && ax[j + 1] <= inner + e
+      if (inX && inZ) continue
+      const a = j * m + i
+      const b = a + 1
+      const c = a + m
+      const d = c + 1
+      idx.push(a, c, b, b, c, d)
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(m * m * 3).fill(0).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3))
+  g.setIndex(idx)
+  return g
+}
+
+/**
+ * The world's floor: a dense displaced grid over the arena field and a coarse
+ * one over the far field (mountains included) out to the horizon, meeting
+ * seamlessly because both sample the same combined heights at the seam.
+ */
+export function buildGround(scorch: ScorchMap, terrain: Terrain, far: FarField, quality: Quality) {
+  const near = groundMaterial(scorch, terrain, far, quality, 'near')
+  const farMat = groundMaterial(scorch, terrain, far, quality, 'far', near.userData.ground)
   const root = new THREE.Group()
   const H = terrain.half
   const seg = quality === 'high' ? 256 : quality === 'medium' ? 192 : 128
-  const field = new THREE.Mesh(new THREE.PlaneGeometry(H * 2, H * 2, seg, seg).rotateX(-Math.PI / 2), mat)
+  const field = new THREE.Mesh(new THREE.PlaneGeometry(H * 2, H * 2, seg, seg).rotateX(-Math.PI / 2), near)
   field.receiveShadow = true
   field.castShadow = true
-  field.customDepthMaterial = groundDepthMaterial(mat.userData.ground)
+  field.customDepthMaterial = groundDepthMaterial(near.userData.ground)
   field.renderOrder = -1
-  // the outer plain tucks just under the field's flat border, so there is never a seam
-  const S = 3000
-  const h = H - 0.75
-  const shape = new THREE.Shape().moveTo(-S, -S).lineTo(S, -S).lineTo(S, S).lineTo(-S, S).closePath()
-  shape.holes.push(new THREE.Path().moveTo(-h, -h).lineTo(-h, h).lineTo(h, h).lineTo(h, -h).closePath())
-  const outer = new THREE.Mesh(new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2).translate(0, -0.03, 0), mat)
+  const rings = quality === 'high' ? 170 : quality === 'medium' ? 130 : 90
+  const step = quality === 'high' ? 6 : quality === 'medium' ? 8 : 12
+  const outer = new THREE.Mesh(farGrid(H, step, far.half - far.cell, rings), farMat)
   outer.receiveShadow = true
+  outer.frustumCulled = false
   outer.renderOrder = -1
   root.add(outer, field)
+  root.userData.uniforms = near.userData.ground
   return root
 }

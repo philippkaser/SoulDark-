@@ -160,23 +160,26 @@ export class ParticleFx {
   }
 
   emberStyle(color: Tint, o: DriftOpts = {}): ParticleStyle {
-    const size = o.size ?? 0.16
-    const rise = o.rise ?? 1
-    const drag = 1.4
+    // real embers are tiny, white-hot motes that streak with their own motion,
+    // jitter in the turbulence of the heat plume and cool to red before winking out
+    // callers size embers for visibility at range; keep them needle-thin
+    const size = o.size ? Math.max(0.03, o.size * 0.32) : 0.045
+    const rise = Math.max(o.rise ?? 2.4, 2)
+    const drag = 2.2
     const b = o.bright ?? 1
     return {
-      // saturated: very bright embers tone-map to white
-      c0: [color[0] * 3.2 * b, (color[1] * 0.75 + 0.06) * 3.2 * b, color[2] * 0.6 * 3.2 * b, 1],
-      c1: flat(color, 1.8 * b, 0),
+      c0: [(color[0] * 0.55 + 0.45) * 5 * b, (color[1] * 0.7 + 0.3) * 3.4 * b, (color[2] * 0.6 + 0.12) * 2 * b, 1],
+      c1: [color[0] * 1.3 * b, color[1] * 0.25 * b, color[2] * 0.08 * b, 0],
       s0: size,
-      s1: size * 0.45,
+      s1: size * 0.55,
       gravity: -rise * drag,
       drag,
-      curl: o.curl ?? 1.1,
-      curlFreq: 0.45,
-      flicker: 0.5,
-      core: 0.6,
-      fadeIn: 0.08,
+      curl: o.curl ?? 2.6,
+      curlFreq: 1.35,
+      stretch: 0.07,
+      flicker: 0.35,
+      core: 0.95,
+      fadeIn: 0.02,
     }
   }
 
@@ -221,8 +224,9 @@ export class ParticleFx {
     n = this.count(n)
     if (!n) return
     const st = this.emberStyle(o.color ?? EMBER, o)
-    const life = o.life ?? 3.5
-    const b = o.burst ?? 1
+    // embers burn out fast: long requested lives are compressed
+    const life = Math.min(o.life ?? 1.6, 2.4)
+    const b = (o.burst ?? 1) + 1.2
     const fl = 1 - (o.flat ?? 0.4)
     const wx = o.wind?.x ?? 0
     const wz = o.wind?.z ?? 0
@@ -302,21 +306,21 @@ export class ParticleFx {
     n = this.count(n)
     if (!n) return
     if (normal) planeBasis(normal, _u, _w)
-    const size = o.size ?? 0.14
+    // sharp glints that hang and twinkle out, not drifting orbs
+    const size = Math.min(o.size ?? 0.06, 0.07)
     const st: ParticleStyle = {
-      c0: [color[0] * 3.4, color[1] * 2.6, color[2] * 1.6, 1],
-      c1: flat(color, 1.2, 0),
+      c0: [color[0] * 5, color[1] * 4, color[2] * 2.6, 1],
+      c1: flat(color, 1.6, 0),
       s0: size,
-      s1: size * 0.6,
-      gravity: -0.12,
-      drag: 2.5,
-      curl: 0.35,
-      curlFreq: 0.25,
-      flicker: 0.45,
-      core: 0.5,
-      fadeIn: 0.06,
+      s1: size * 0.3,
+      gravity: 1.5,
+      drag: 3.5,
+      stretch: 0.05,
+      flicker: 0.9,
+      core: 1,
+      fadeIn: 0,
     }
-    const life = o.life ?? 4
+    const life = Math.min(o.life ?? 1.4, 1.8)
     const dr = o.drift ?? 1.5
     for (let i = 0; i < n; i++) {
       if (normal) {
@@ -333,23 +337,24 @@ export class ParticleFx {
   glitter(p: THREE.Vector3, n: number, radius: number, height: number, color: Tint = WHITE_GOLD, o: { life?: number; size?: number; rise?: number; stagger?: number; delay?: number } = {}) {
     n = this.count(n)
     if (!n) return
-    const size = o.size ?? 0.1
-    const rise = o.rise ?? height * 0.2
-    const drag = 0.7
+    const size = Math.min(o.size ?? 0.05, 0.06)
+    const rise = (o.rise ?? height * 0.2) * 2.5
+    const drag = 1.2
     const st: ParticleStyle = {
-      c0: hot(color, 6),
-      c1: flat(color, 1.4, 0),
+      c0: hot(color, 7),
+      c1: [color[0] * 1.4, color[1] * 0.45, color[2] * 0.15, 0],
       s0: size,
-      s1: size * 0.7,
+      s1: size * 0.4,
       gravity: -rise * drag,
       drag,
-      curl: Math.max(0.6, radius * 0.08),
-      curlFreq: 0.3 / Math.max(1, radius * 0.1),
-      flicker: 0.92,
+      curl: Math.max(1.4, radius * 0.1),
+      curlFreq: 1.1 / Math.max(1, radius * 0.1),
+      stretch: 0.06,
+      flicker: 0.6,
       core: 1,
-      fadeIn: 0.1,
+      fadeIn: 0.02,
     }
-    const life = o.life ?? 5
+    const life = Math.min(o.life ?? 2, 2.4)
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2
       const r = radius * Math.sqrt(Math.random())
@@ -444,7 +449,7 @@ export class ParticleFx {
     }
   }
 
-  private ambEmber: ParticleStyle = { c0: [3.6, 1.3, 0.25, 1], c1: [1.2, 0.3, 0.05, 0], s0: 0.12, s1: 0.06, gravity: -0.3, drag: 0.4, curl: 0.9, curlFreq: 0.18, flicker: 0.7, core: 0.4, fadeIn: 0.15 }
+  private ambEmber: ParticleStyle = { c0: [5, 2.1, 0.45, 1], c1: [1.3, 0.22, 0.03, 0], s0: 0.04, s1: 0.022, gravity: -3.2, drag: 1.6, curl: 2.4, curlFreq: 1.2, stretch: 0.08, flicker: 0.3, core: 0.95, fadeIn: 0.03 }
   private ambAsh: ParticleStyle = this.ashStyle(0)
   private ashDawn = 0
 
@@ -469,8 +474,12 @@ export class ParticleFx {
       const y = Math.max(0.3, c.y + rnd(-8, 26))
       const z = c.z + rnd(-55, 55)
       if (Math.random() < 0.5 * (1 - dawn)) {
-        const big = Math.random() < 0.06
-        this.light.emit(x, y, z, wind.x * 0.6 + rnd(-0.6, 0.6), rnd(0.5, 1.6), wind.z * 0.6 + rnd(-0.6, 0.6), rnd(4, 9), this.ambEmber, big ? rnd(1.8, 3) : rnd(0.5, 1.3), big ? 1.6 : rnd(0.5, 1.2))
+        // embers rise out of the burning plain in little gusts, mostly low
+        const gx = x + rnd(-1.5, 1.5)
+        const gz = z + rnd(-1.5, 1.5)
+        const gy = Math.random() < 0.7 ? rnd(0.2, 3) : y
+        const k = Math.random() < 0.25 ? 4 : 1
+        for (let j = 0; j < k; j++) this.light.emit(gx + rnd(-0.4, 0.4), gy, gz + rnd(-0.4, 0.4), wind.x * 0.9 + rnd(-1.2, 1.2), rnd(1.5, 4.5), wind.z * 0.9 + rnd(-1.2, 1.2), rnd(1.2, 3.2), this.ambEmber, rnd(0.6, 1.4), rnd(0.6, 1.3))
       } else this.soft.emit(x, y, z, wind.x * 0.8, rnd(-0.6, -0.2), wind.z * 0.8, rnd(5, 8), this.ambAsh, rnd(0.6, 1.5))
     }
   }

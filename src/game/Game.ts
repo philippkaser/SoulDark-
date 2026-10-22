@@ -23,6 +23,7 @@ import { FOG_COLOR, SUN_DIR } from './world/layout'
 import { Props } from './world/props'
 import { ScorchMap } from './world/scorch'
 import { Sky } from './world/sky'
+import { FarField, type CutOpts } from './world/farField'
 import { Terrain } from './world/terrain'
 
 /** A gameplay system that plugs into the frame loop. */
@@ -66,8 +67,8 @@ export class Game {
   readonly scorch = new ScorchMap()
   /** The deformable ground: craters, trenches, heightAt for anything that stands on it. */
   readonly terrain: Terrain
-  /** Bores a tunnel through the mountains along a ray at the given wave speed (m/s); returns the distance to the mountain face, or -1. Set by the mountains. */
-  boreMountains: ((origin: THREE.Vector3, dir: THREE.Vector3, radius: number, speed: number) => number) | null = null
+  /** The world beyond the arena: the mountains and the sword's canyons. */
+  readonly far: FarField
   readonly fx: Fx
   readonly slicer = new Slicer()
   readonly props: Props
@@ -109,6 +110,8 @@ export class Game {
     this.q = quality === 'high' ? 1 : quality === 'medium' ? 0.75 : 0.5
     this.camera = camera
     this.terrain = new Terrain(quality === 'low' ? 256 : 512)
+    this.far = new FarField(quality === 'low' ? 384 : 512)
+    this.terrain.far = this.far
     this.fx = new Fx({
       camera,
       post: this.post,
@@ -127,7 +130,7 @@ export class Game {
     this.player = new Player(this)
     this.slashes = new Slashes(this)
     this.props = new Props(this)
-    this.ground = buildGround(this.scorch, this.terrain, quality)
+    this.ground = buildGround(this.scorch, this.terrain, this.far, quality)
     // everything that touches the ground finds the terrain
     this.fx.debris.ground = this.terrain
     this.fx.ground = this.terrain
@@ -291,9 +294,29 @@ export class Game {
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
     audio.rumble(0.6 * k, 3)
-    // a full cut carries on to the horizon and notches the mountains
-    this.props.mountains.cleave(a, fwd, k)
+    // a full cut carries on to the horizon, through the mountains
+    if (k > 0.55) {
+      const reach = 600 + (k - 0.55) * 7600
+      const w = 10 + k * 22
+      // it opens a little ahead of the hero and deepens as it goes
+      const sx = a.x + fwd.x * 16
+      const sz = a.z + fwd.z * 16
+      this.fx.after(0.12, () => this.canyon(sx, sz, a.x + fwd.x * reach, a.z + fwd.z * reach, w, 18 + k * 60, { rampIn: 160 }))
+    }
   }
+
+  /**
+   * Cut a canyon across the world from (ax, az) to (bx, bz): through the arena
+   * field and the far field alike, mountains included. Its walls glow molten.
+   */
+  canyon(ax: number, az: number, bx: number, bz: number, width: number, depth: number, opts: CutOpts = {}) {
+    const r = this.far.cut(ax, az, bx, bz, width, depth, this.fx.time, opts)
+    if (r) this.terrain.refresh(r[0], r[1], r[2], r[3])
+    return r
+  }
+
+  /** Real seconds since the game began, for the ground's slow lava pulse. */
+  private groundClock = 0
 
   /** Points for Judgment's cuts: enemies first, then the air around the hero. */
   judgmentPoint(i: number): THREE.Vector3 {
@@ -346,6 +369,7 @@ export class Game {
     this.post.reset()
     this.sky.reset()
     this.scorch.clear()
+    this.far.reset()
     this.terrain.reset()
     this.fx.clear()
     this.lightning.clear()
@@ -406,7 +430,14 @@ export class Game {
     this.props.update(wdt, rdt)
     this.props.root.updateMatrixWorld()
     this.scorch.update(rdt)
+    this.far.update()
     this.terrain.update(rdt)
+    this.groundClock += rdt
+    const gu = this.ground.userData.uniforms as Record<string, THREE.IUniform> | undefined
+    if (gu) {
+      gu.uTime.value = this.groundClock
+      gu.uClock.value = this.fx.time
+    }
     this.score.update(rdt)
 
     // camera

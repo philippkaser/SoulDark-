@@ -398,7 +398,8 @@ export class Punch implements System {
     const tilt = Math.asin(clamp(w.dir.y, 0, 1))
     w.ground = p.altitude > 6 ? 0 : tilt < 0.03 ? SPRAY_LEN : Math.min(SPRAY_LEN, 14 / Math.tan(tilt))
     this.aimTargets(w)
-    w.mountain = g.boreMountains?.(w.origin, w.dir, 60, WAVE_SPEED) ?? -1
+    g.canyon(w.origin.x, w.origin.z, w.origin.x + w.dir.x * 4000, w.origin.z + w.dir.z * 4000, 70, 80)
+    w.mountain = -1
     this.releaseFx(w)
     this.playShot(w)
     audio.seriousPunch()

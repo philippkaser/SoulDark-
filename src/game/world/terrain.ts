@@ -160,6 +160,12 @@ export class Terrain implements GroundSampler {
   private uploadTimer = 0
   private seq = 1
   private edge: Float32Array
+  /**
+   * The world beyond (the mountains and the sword's canyons). Its heights are
+   * added to the field's, both here and in the uploaded texture, so anything
+   * that stands on the field also stands in a canyon that crosses it.
+   */
+  far: GroundSampler | null = null
 
   constructor(res = 512) {
     this.res = res
@@ -185,10 +191,22 @@ export class Terrain implements GroundSampler {
     this.tex.needsUpdate = true
     this.uploads++
     this.version++
+    if (this.far) this.refresh(-this.half, -this.half, this.half, this.half)
   }
 
-  /** Bilinear ground height at (x, z); 0 outside the field. Matches the GPU's linear sampling. */
+  /** The far field changed under this rectangle: re-upload the combined heights there. */
+  refresh(x0: number, z0: number, x1: number, z1: number) {
+    const box = this.box(x0, z0, x1, z1)
+    if (box) this.touch(box[0], box[1], box[2], box[3])
+  }
+
+  /** Ground height at (x, z): the carved field plus the far field (mountains, canyons). */
   heightAt(x: number, z: number): number {
+    return this.nearAt(x, z) + (this.far ? this.far.heightAt(x, z) : 0)
+  }
+
+  /** Bilinear field height at (x, z); 0 outside the field. Matches the GPU's linear sampling. */
+  nearAt(x: number, z: number): number {
     const h = this.half
     if (x <= -h || x >= h || z <= -h || z >= h) return 0
     const n = this.res
@@ -235,7 +253,7 @@ export class Terrain implements GroundSampler {
     const box = this.box(x - reach, z - reach, x + reach, z + reach)
     if (!box) return
     const [i0, j0, i1, j1] = box
-    const hc = this.heightAt(x, z)
+    const hc = this.nearAt(x, z)
     // big bowls get flatter floors and steeper walls
     const pw = radius > 20 ? 3 : 2
     const ns = 1.6 / Math.max(1.5, radius * 0.25)
@@ -339,7 +357,13 @@ export class Terrain implements GroundSampler {
     const n = this.res
     const H = this.heights
     const D = this.data
-    for (let j = j0; j <= j1; j++) for (let k = j * n + i0, e = j * n + i1; k <= e; k++) D[k] = toHalf(H[k])
+    const far = this.far
+    if (far) {
+      for (let j = j0; j <= j1; j++) {
+        const z = -this.half + (j + 0.5) * this.cell
+        for (let i = i0; i <= i1; i++) D[j * n + i] = toHalf(H[j * n + i] + far.heightAt(-this.half + (i + 0.5) * this.cell, z))
+      }
+    } else for (let j = j0; j <= j1; j++) for (let k = j * n + i0, e = j * n + i1; k <= e; k++) D[k] = toHalf(H[k])
     this.tex.needsUpdate = true
     this.uploads++
     this.dirty = false
