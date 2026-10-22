@@ -420,6 +420,106 @@ class AudioEngine {
     for (let i = 0; i < 20; i++) this.burst(o, t + 0.1 + Math.random() * 1.6, 0.06, 'bandpass', rnd(800, 2600), 500, 0.18, 2)
   }
 
+  /** The jab: a crack of displaced air, a thump in the chest, the boom rolling off. */
+  punchJab() {
+    if (!this.ctx) return
+    const o = this.out(undefined, 0.35)!
+    const t = this.ctx.currentTime
+    this.burst(o, t, 0.03, 'highpass', 2500, 8000, 0.9, 0.8, 0.0005)
+    this.tone(o, 'sine', 150, 36, t, 0.18, 0.9, 0.002)
+    this.burst(o, t + 0.005, 0.28, 'bandpass', 2000, 280, 0.45, 1.2, 0.006)
+    this.burst(o, t + 0.02, 0.7, 'lowpass', 700, 50, 0.4, 0.7, 0.01)
+  }
+
+  /** The Serious Punch's coil: a rumble rising from the ground and a tightening whine, driven by charge 0..1. */
+  seriousCharge(): LoopHandle {
+    if (!this.ctx) return NOOP
+    const ctx = this.ctx
+    const t = ctx.currentTime
+    const out = this.out(undefined, 0.35)!
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.4, t + 0.25)
+    g.connect(out)
+    // the ground: low noise, throbbing faster as the power builds
+    const src = ctx.createBufferSource()
+    src.buffer = this.noise
+    src.loop = true
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 90
+    const throb = ctx.createGain()
+    throb.gain.value = 0.6
+    const lfo = ctx.createOscillator()
+    lfo.frequency.value = 5
+    const lfoAmt = ctx.createGain()
+    lfoAmt.gain.value = 0.4
+    lfo.connect(lfoAmt).connect(throb.gain)
+    src.connect(lp).connect(throb).connect(g)
+    // a sub tone underneath, and a whine tightening over the top
+    const sub = ctx.createOscillator()
+    sub.type = 'sine'
+    sub.frequency.value = 30
+    const subG = ctx.createGain()
+    subG.gain.value = 0.5
+    sub.connect(subG).connect(g)
+    const whine = ctx.createOscillator()
+    whine.type = 'triangle'
+    whine.frequency.value = 180
+    const whineG = ctx.createGain()
+    whineG.gain.value = 0.0001
+    whine.connect(whineG).connect(g)
+    for (const n of [src, lfo, sub, whine]) n.start(t)
+    let stopped = false
+    return {
+      set: (k) => {
+        if (stopped) return
+        const now = ctx.currentTime
+        lp.frequency.setTargetAtTime(90 + k * 320, now, 0.08)
+        lfo.frequency.setTargetAtTime(5 + k * 16, now, 0.08)
+        sub.frequency.setTargetAtTime(30 + k * 24, now, 0.08)
+        whine.frequency.setTargetAtTime(180 + k * k * 900, now, 0.08)
+        whineG.gain.setTargetAtTime(0.0001 + k * k * 0.05, now, 0.08)
+        g.gain.setTargetAtTime(0.35 + k * 0.55, now, 0.08)
+      },
+      stop: (fade = 0.1) => {
+        if (stopped) return
+        stopped = true
+        const now = ctx.currentTime
+        g.gain.cancelScheduledValues(now)
+        g.gain.setValueAtTime(Math.max(0.0002, g.gain.value), now)
+        g.gain.exponentialRampToValueAtTime(0.0001, now + fade)
+        for (const n of [src, lfo, sub, whine]) n.stop(now + fade + 0.05)
+      },
+    }
+  }
+
+  /** The Serious Punch: the air cracks, a sub-bass boom, the line ripped open, thunder chasing the wave to the horizon. */
+  seriousPunch() {
+    if (!this.ctx) return
+    const o = this.out(undefined, 1.1)!
+    const t = this.ctx.currentTime
+    this.burst(o, t, 0.05, 'highpass', 3000, 10000, 1, 0.8, 0.0005)
+    this.tone(o, 'sine', 62, 18, t, 3.5, 1, 0.004)
+    this.tone(o, 'sine', 38, 16, t + 0.03, 4.5, 0.8, 0.02)
+    this.burst(o, t + 0.01, 1.1, 'bandpass', 5200, 240, 0.85, 2.2, 0.01)
+    this.burst(o, t, 2.2, 'lowpass', 2400, 50, 0.9, 0.6, 0.005)
+    for (let i = 0; i < 9; i++) this.burst(o, t + 0.35 + i * 0.32 + Math.random() * 0.2, 0.8 + Math.random() * 0.8, 'lowpass', rnd(500, 900), 40, 0.5 * (1 - i / 11), 0.7, 0.03)
+    this.rumble(1, 4)
+  }
+
+  /** The atmosphere tearing open overhead: a long rip sweeping across the sky, crackle, then the hush of clear air. */
+  skyRip() {
+    if (!this.ctx) return
+    const o = this.out(undefined, 1.4)!
+    const t = this.ctx.currentTime
+    this.burst(o, t, 1.6, 'bandpass', 300, 4200, 0.5, 3, 0.25)
+    this.burst(o, t + 0.1, 2.4, 'highpass', 1200, 6000, 0.18, 0.7, 0.6)
+    for (let i = 0; i < 26; i++) this.burst(o, t + Math.random() * 1.8, 0.04 + Math.random() * 0.05, 'bandpass', rnd(900, 4200), 600, 0.12, 2)
+    this.tone(o, 'sine', 48, 24, t + 0.2, 3, 0.5, 0.4)
+    this.choir(o, t + 0.6, [146.8, 220, 293.7], 3.5, 0.03, 1.2)
+  }
+
   hurt(heavy: boolean) {
     if (!this.ctx || !this.allow('hurt', 0.08)) return
     const o = this.out(undefined, 0.2)!

@@ -29,6 +29,8 @@ export function createGame(quality: Quality, camera: THREE.PerspectiveCamera) {
   const citadel = new Citadel(game, proj)
   const eclipse = new Eclipse(game, proj)
   for (const s of [horde, arrows, proj, artillery, airships, titans, lance, citadel, eclipse, director]) game.add(s)
+  // the Serious Punch's wave runs on the world clock
+  game.add(game.player.punch)
   const forces: Forces = { horde, proj, artillery, airships, titans, lance, citadel, eclipse }
   game.forces = forces
   director.campaign = new Campaign(game, forces)

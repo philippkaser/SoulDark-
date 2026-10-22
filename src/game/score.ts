@@ -206,12 +206,13 @@ export class Score {
     if (tier >= 1) this.log(['', 'Parry', 'PERFECT PARRY', 'DIVINE PARRY'][tier], pts, tier >= 2)
   }
 
-  feat(kind: 'heaven' | 'slam' | 'judgment' | 'catch', k: number) {
-    const base = { heaven: 300, slam: 100, judgment: 2000, catch: 800 }[kind]
+  feat(kind: 'heaven' | 'slam' | 'judgment' | 'catch' | 'punch' | 'serious', k: number) {
+    const base = { heaven: 300, slam: 100, judgment: 2000, catch: 800, punch: 60, serious: 2500 }[kind]
     const pts = Math.round(base * (0.5 + k) * this.mult)
     this.points += pts
-    this.addStyle(kind === 'judgment' ? 250 : kind === 'heaven' ? 40 + k * 60 : 25)
+    this.addStyle(kind === 'judgment' || kind === 'serious' ? 250 : kind === 'heaven' ? 40 + k * 60 : kind === 'punch' ? 12 : 25)
     if (kind === 'judgment') this.log('JUDGMENT', pts, true)
+    if (kind === 'serious') this.log('SERIOUS PUNCH', pts, true)
   }
 
   hurt(dmg: number) {

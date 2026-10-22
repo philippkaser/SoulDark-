@@ -204,7 +204,7 @@ export class Horde implements System {
     }
     this.killsThisFrame++
     this.killAt.set(this.px[i], this.py[i] + 1, this.pz[i])
-    const vaporize = hit.kind === 'beam' || hit.kind === 'judgment' || (hit.kind === 'heaven' && Math.random() < 0.5)
+    const vaporize = hit.kind === 'beam' || hit.kind === 'judgment' || (hit.kind === 'heaven' && Math.random() < 0.5) || (hit.kind === 'punch' && hit.dmg >= 5000)
     if (vaporize) {
       this.st[i] = St.Dying
       this.timer[i] = 0.7

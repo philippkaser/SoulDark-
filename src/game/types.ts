@@ -15,6 +15,7 @@ export type HitKind =
   | 'reflect' // the enemy's own weapon, returned
   | 'judgment' // the ultimate
   | 'parry' // knocked back by a parry
+  | 'punch' // the fist: a jab's pressure cone, or the Serious Punch's wave
 
 export interface Hit {
   /** Unique per attack instance so persistent volumes don't hit twice. */

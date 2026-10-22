@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { smoothstep } from '../../engine/math'
 import { FOG_COLOR, SUN_DIR } from './layout'
 
 const vert = /* glsl */ `
@@ -27,6 +28,11 @@ uniform vec3 uFlashCol;
 uniform float uBolt;
 uniform vec3 uBoltDir;
 uniform float uShatter;
+uniform float uPartOn;
+uniform vec2 uPartDir;
+uniform vec4 uPart;
+uniform vec2 uPartRing;
+uniform float uPartAge;
 varying vec3 vDir;
 
 float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -65,6 +71,60 @@ void main() {
   float h = d.y;
   vec3 col = baseSky(d);
 
+  // the atmosphere split by a punch, worked out on the cloud plane: a straight
+  // canyon along uPartDir and a ring blasted out around the hero
+  float pClear = 0.0;
+  float pWall = 0.0;
+  float pComp = 0.0;
+  float pRoll = 0.0;
+  vec2 pShift = vec2(0.0);
+  if (uPartOn > 0.0 && h > -0.05) {
+    vec2 q = d.xz / (h + 0.16);
+    vec2 perp = vec2(-uPartDir.y, uPartDir.x);
+    float along = dot(q, uPartDir);
+    float side = dot(q, perp);
+    float a = abs(side);
+    // the cut tapers to a point where it is still tearing open (ahead, and behind the hero)
+    float lim = along >= 0.0 ? uPart.x : uPart.y;
+    float tip = smoothstep(lim, lim - 1.0 - lim * 0.2, abs(along));
+    float rag = n2(vec2(along * 2.1, side > 0.0 ? 1.0 : 9.0));
+    float w = uPart.z * tip * (0.75 + 0.5 * rag);
+    float has = step(0.001, w);
+    float inC = (1.0 - smoothstep(w * 0.55, w, a)) * has;
+    float o = a - w;
+    float wb = 0.06 + w * 0.22;
+    float bankC = exp(-o * o / (wb * wb)) * has;
+    // the deck shoved out of the cut piles up behind the walls
+    float compC = (1.0 - smoothstep(0.0, w * 2.2 + 0.25, max(o, 0.0))) * step(-wb, o) * has;
+    float r = length(q);
+    float R = uPartRing.x;
+    float hasR = uPartRing.y * step(0.01, R);
+    float inR = (1.0 - smoothstep(R * 0.7, R, r)) * hasR;
+    float oR = r - R;
+    float rb = 0.08 + R * 0.1;
+    float bankR = exp(-oR * oR / (rb * rb)) * hasR;
+    float compR = (1.0 - smoothstep(0.0, R * 0.8 + 0.3, max(oR, 0.0))) * step(-rb, oR) * hasR;
+    pClear = max(inC, inR);
+    pWall = max(bankC, bankR) * (1.0 - pClear * 0.8);
+    pComp = max(compC, compR) * (1.0 - pClear);
+    // sample the deck from nearer the cut, so it looks squeezed against the walls
+    pShift = -perp * sign(side) * w * exp(-max(o, 0.0) / (w * 1.2 + 0.05));
+    pShift -= q / max(r, 1e-3) * R * exp(-max(oR, 0.0) / (R * 0.8 + 0.05)) * uPartRing.y * 0.7;
+    // the banks roll outward (the ring's noise runs on the unit circle: no seam)
+    float rollC = fbm(vec2(along * 2.6, o * 7.0 - uPartAge * 0.8));
+    float rollR = fbm(q / max(r, 1e-3) * 3.0 + vec2(oR * 7.0 - uPartAge * 0.8, 5.0));
+    pRoll = bankR > bankC ? rollR : rollC;
+    // what was above the smoke: deep clear sky full of stars, blue at dawn
+    float hz = smoothstep(-0.02, 0.16, h);
+    vec3 deep = mix(vec3(0.008, 0.005, 0.022), vec3(0.06, 0.2, 0.55), uDawn);
+    col = mix(col, deep, pClear * hz * 0.93);
+    vec2 sp2 = d.xz / (abs(h) + 0.4) * 260.0;
+    float st2 = step(0.992, h21(floor(sp2))) * (0.55 + 0.45 * sin(uTime * 3.0 + h21(floor(sp2) + 5.0) * 30.0));
+    col += vec3(0.8, 0.85, 1.0) * st2 * pClear * hz * (1.0 - uDawn) * 0.9;
+    // light spilling down the inside of the walls
+    col += mix(vec3(0.5, 0.17, 0.06), vec3(0.6, 0.45, 0.3), uDawn) * inC * smoothstep(0.35, 1.0, a / max(w, 1e-3)) * hz * 0.35 * uPart.w;
+  }
+
   // stars (thin through the smoke)
   vec2 sp = d.xz / (abs(h) + 0.4) * 170.0;
   float star = step(0.9975, h21(floor(sp))) * smoothstep(0.15, 0.55, h) * (1.0 - uDawn);
@@ -82,7 +142,8 @@ void main() {
   float rays = fbm(vec2(theta * 6.0, uTime * 0.06)) * 0.7 + fbm(vec2(theta * 23.0, -uTime * 0.04)) * 0.5;
   vec3 corona = mix(vec3(1.0, 0.55, 0.18), vec3(1.0, 0.25, 0.08), uDoom);
   float c = 0.0;
-  if (x > 0.0) c = 7.0 * exp(-x * 110.0) + 1.6 * exp(-x * 20.0) * (0.6 + rays) + 0.4 * exp(-x * 4.0) * rays;
+  // where the punch blew the smoke away the corona's haze goes with it: a crisp ring on clear sky
+  if (x > 0.0) c = 7.0 * exp(-x * 110.0) + (1.6 * exp(-x * 20.0) * (0.6 + rays) + 0.4 * exp(-x * 4.0) * rays) * (1.0 - 0.55 * pClear);
   float rim = smoothstep(0.004, 0.0, abs(x)) * 12.0;
   vec3 ecl = corona * c + vec3(1.0, 0.85, 0.6) * rim;
   if (x < 0.0) {
@@ -114,15 +175,23 @@ void main() {
 
   // clouds lit by the corona
   if (h > -0.05) {
-    vec2 cp = d.xz / (h + 0.16) * 1.4 + vec2(uTime * 0.01, uTime * 0.004);
+    vec2 cp = (d.xz / (h + 0.16) + pShift) * 1.4 + vec2(uTime * 0.01, uTime * 0.004);
     float cl = smoothstep(0.42, 0.85, fbm(cp));
     float streak = smoothstep(0.5, 0.9, fbm(vec2(cp.x * 0.35, cp.y * 3.0) + 4.0));
-    cl = max(cl, streak * 0.6);
+    cl = max(cl, streak * 0.6) * (1.0 - pClear);
+    // the split: the shoved-aside deck piled thick, and the walls as dense rolling banks
+    cl = max(cl, pComp * 0.85 * smoothstep(0.3, 0.7, fbm(cp * 1.25 + vec2(uPartAge * 0.03, 0.0)) + pComp * 0.3));
+    cl = max(cl, pWall * smoothstep(0.2, 0.65, pRoll + pWall * 0.4));
     float lit = exp(-ang * 2.6) * 1.6 + 0.06;
     vec3 cloudDark = mix(vec3(0.03, 0.012, 0.02), vec3(0.32, 0.36, 0.45), uDawn);
     vec3 cloudLit = mix(vec3(0.75, 0.22, 0.07), vec3(1.4, 0.95, 0.65), uDawn);
     vec3 cc = mix(cloudDark, cloudLit, clamp(lit * 0.6, 0.0, 1.0));
+    // the piled deck sits in shadow; the wall faces are lit edge-on by the light pouring through the cut
+    cc *= 1.0 - pComp * 0.5 * (1.0 - pWall);
+    cc = mix(cc, cloudLit * (0.55 + 0.35 * pRoll) * (0.6 + uPart.w) * (0.5 + 0.5 * clamp(lit, 0.0, 1.0)), clamp(pWall * 1.3, 0.0, 1.0));
     float fade = smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.6, 0.97, h));
+    // the split's banks stay visible higher up, so the cut runs on overhead
+    fade = max(fade, smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.85, 0.99, h)) * max(pWall, pComp));
     // thin the cloud deck in front of the black disc so it stays a void
     fade *= 1.0 - 0.85 * smoothstep(0.02, -0.01, x) * (1.0 - uDawn);
     col = mix(col, cc + corona * lit * 0.12 * (1.0 - uDawn), cl * fade * 0.88);
@@ -155,6 +224,40 @@ void main() {
 
 const DAWN_FOG = new THREE.Color('#c39478')
 
+export interface PartOpts {
+  /** Canyon half-width on the cloud plane (the deck is at d.xz / (h + 0.16)). */
+  width?: number
+  /** Final radius of the ring blasted out around the hero (cloud-plane units; 0 for none). */
+  ring?: number
+  /** Seconds for the split to tear from overhead to the horizon. */
+  tear?: number
+  /** Seconds until the deck has closed again. */
+  heal?: number
+}
+
+const PART_DEFAULTS: Required<PartOpts> = { width: 0.5, ring: 1.5, tear: 1.5, heal: 90 }
+/** How far the tear runs on the cloud plane: past the horizon (|q| = 6.25 at h = 0). */
+const PART_REACH = 9
+
+/** The cloud split's shape at `age` seconds: how far it has torn ahead and behind, its width, the ring, the wall glow. */
+export function partState(age: number, o: Required<PartOpts> = PART_DEFAULTS) {
+  const u = Math.min(1, Math.max(0, age) / o.tear)
+  const heal = 1 - smoothstep(o.heal * 0.3, o.heal, age)
+  const reach = PART_REACH * Math.pow(u, 1.25)
+  const ru = Math.min(1, Math.max(0, age) / (o.tear * 1.5))
+  return {
+    on: heal > 0.001 ? 1 : 0,
+    reach,
+    back: reach * 0.45,
+    // the canyon keeps opening after the front has passed, then slowly closes
+    width: o.width * (0.4 + 0.6 * smoothstep(0, o.tear * 1.8, age)) * heal,
+    ring: o.ring * (1 - (1 - ru) * (1 - ru)) * heal,
+    ringAmt: heal,
+    // fresh walls blaze, then settle into lit banks
+    glow: (0.6 + 2.2 * Math.exp(-age / 2.5)) * heal,
+  }
+}
+
 export class Sky {
   readonly mesh: THREE.Mesh
   readonly u = {
@@ -174,9 +277,17 @@ export class Sky {
     uBolt: { value: 0 },
     uBoltDir: { value: new THREE.Vector3(1, 0.1, 0).normalize() },
     uShatter: { value: 0 },
+    uPartOn: { value: 0 },
+    uPartDir: { value: new THREE.Vector2(0, -1) },
+    uPart: { value: new THREE.Vector4() },
+    uPartRing: { value: new THREE.Vector2() },
+    uPartAge: { value: 0 },
   }
   readonly fogColor = FOG_COLOR.clone()
   private boltTimer = 4
+  /** The cloud split: seconds since it began (< 0: none), and its shape. */
+  private partAge = -1
+  private partOpts: Required<PartOpts> = { ...PART_DEFAULTS }
 
   constructor() {
     const mat = new THREE.ShaderMaterial({
@@ -200,7 +311,28 @@ export class Sky {
     this.u.uFlashCol.value.set(color)
   }
 
+  /**
+   * Split the atmosphere: the cloud deck is blown apart in a straight canyon
+   * along `dir` (xz) from overhead to the horizon, and a ring of cloud is
+   * blasted outward around the hero. The split tears open over ~1.5 s and
+   * heals over ~90 s.
+   */
+  part(dir: THREE.Vector3, opts: PartOpts = {}) {
+    const l = Math.hypot(dir.x, dir.z)
+    if (l < 1e-4) return
+    this.u.uPartDir.value.set(dir.x / l, dir.z / l)
+    this.partOpts = { ...PART_DEFAULTS, ...opts }
+    this.partAge = 0
+  }
+
+  /** Is the sky split open right now? */
+  get parted() {
+    return this.partAge >= 0
+  }
+
   reset() {
+    this.partAge = -1
+    this.u.uPartOn.value = 0
     this.u.uEye.value = 0
     this.u.uCrack.value = 0
     this.u.uSplit.value = 0
@@ -223,6 +355,15 @@ export class Sky {
         u.uBoltDir.value.set(Math.sin(a), 0.05 + Math.random() * 0.15, Math.cos(a)).normalize()
         u.uBolt.value = 0.6 + Math.random() * 0.8
       }
+    }
+    if (this.partAge >= 0) {
+      this.partAge += dt
+      const st = partState(this.partAge, this.partOpts)
+      u.uPartOn.value = st.on
+      u.uPart.value.set(st.reach, st.back, st.width, st.glow)
+      u.uPartRing.value.set(st.ring, st.ringAmt)
+      u.uPartAge.value = this.partAge
+      if (!st.on) this.partAge = -1
     }
     this.fogColor.copy(FOG_COLOR).lerp(DAWN_FOG, u.uDawn.value)
     u.uHorizon.value.copy(this.fogColor)
