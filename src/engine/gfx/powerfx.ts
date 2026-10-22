@@ -4,6 +4,8 @@ import * as THREE from 'three'
 /** Simultaneous refractive shock rings and heat-haze regions (uniform array sizes). */
 export const MAX_SHOCKS = 6
 export const MAX_HAZE = 6
+/** Simultaneous screen cuts (the image itself sliced along a line). */
+export const MAX_SCREEN_CUTS = 4
 
 /**
  * One full-screen pass for every "power" beat: anime impact frames, radial
@@ -33,6 +35,10 @@ uniform float uHazeClock;
 uniform float uFringe;
 uniform float uHurt;
 uniform float uClock;
+// xy a point on the cut (uv), z its angle, w the slide (screen heights); glow per cut
+uniform vec4 uCut[${MAX_SCREEN_CUTS}];
+uniform float uCutGlow[${MAX_SCREEN_CUTS}];
+uniform float uCutOn;
 
 float pfHash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -70,9 +76,29 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     warped = true;
   }
 
+  // the world is cut: each side of the line slides along it, apart from the other
+  float seam = 0.0;
+  float seamCa = 0.0;
+  if (uCutOn > 0.0) {
+    for (int i = 0; i < ${MAX_SCREEN_CUTS}; i++) {
+      vec4 c = uCut[i];
+      if (c.w <= 0.0 && uCutGlow[i] <= 0.0) continue;
+      vec2 dir = vec2(cos(c.z), sin(c.z));
+      vec2 nrm = vec2(-dir.y, dir.x);
+      float sd = dot((uv - c.xy) * asp, nrm);
+      float side = sd >= 0.0 ? 1.0 : -1.0;
+      // slide along the cut, and a hairline gap opens across it
+      st -= (dir * side * c.w * 0.5 + nrm * side * c.w * 0.08) / asp;
+      float w = 0.0015 + c.w * 0.04;
+      seam += exp(-pow(sd / w, 2.0)) * uCutGlow[i] + exp(-abs(sd) / (w * 8.0)) * uCutGlow[i] * 0.25;
+      seamCa += c.w * 6.0 * exp(-abs(sd) / 0.05);
+    }
+    warped = true;
+  }
+
   // lens fringing grows toward the frame edge
   vec2 fc = uv - 0.5;
-  vec2 fringe = fc * dot(fc * asp, fc * asp) * uFringe;
+  vec2 fringe = fc * dot(fc * asp, fc * asp) * uFringe + vec2(seamCa * 0.01, 0.0);
 
   vec3 col;
   if (uZoom > 0.002 || uChroma > 0.002) {
@@ -123,6 +149,9 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     else col = mix(vec3(0.03, 0.0, 0.01), vec3(1.0, 0.94, 0.8), t);
   }
 
+  // the seam of a cut burns white-gold
+  if (seam > 0.0) col += vec3(1.0, 0.86, 0.62) * seam * 1.6;
+
   col = mix(col, uFlashColor, clamp(uFlash, 0.0, 1.0));
   outputColor = vec4(col, inputColor.a);
 }
@@ -150,6 +179,9 @@ export class PowerFXEffect extends Effect {
         ['uHazeClock', new THREE.Uniform(0)],
         ['uFringe', new THREE.Uniform(0)],
         ['uHurt', new THREE.Uniform(0)],
+        ['uCut', new THREE.Uniform(Array.from({ length: MAX_SCREEN_CUTS }, () => new THREE.Vector4()))],
+        ['uCutGlow', new THREE.Uniform(new Array<number>(MAX_SCREEN_CUTS).fill(0))],
+        ['uCutOn', new THREE.Uniform(0)],
         ['uClock', new THREE.Uniform(0)],
       ]),
     })

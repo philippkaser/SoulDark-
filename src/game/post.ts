@@ -1,9 +1,11 @@
 import * as THREE from 'three'
-import { MAX_HAZE, MAX_SHOCKS } from '../engine/gfx/powerfx'
+import { MAX_HAZE, MAX_SCREEN_CUTS, MAX_SHOCKS } from '../engine/gfx/powerfx'
 import { clamp, smoothstep } from '../engine/math'
 import { SUN_DIR } from './world/layout'
 
 const _p = new THREE.Vector3()
+const _cA = new THREE.Vector3()
+const _cB = new THREE.Vector3()
 const _c = new THREE.Vector3()
 const _f = new THREE.Vector3()
 const _s = new THREE.Vector2()
@@ -120,6 +122,21 @@ export class PostState {
   readonly blastColor = new THREE.Color(1, 0.86, 0.66)
   private blast = { pos: new THREE.Vector3(), strength: 0, t: 0, dur: 1 }
 
+  /** Screen cuts for the shader: xy a point on the line (uv), z angle, w slide; and each seam's glow. */
+  readonly cutData = Array.from({ length: MAX_SCREEN_CUTS }, () => new THREE.Vector4())
+  readonly cutGlow = new Array<number>(MAX_SCREEN_CUTS).fill(0)
+  cutOn = false
+  private cuts: Array<{ on: boolean; x: number; y: number; angle: number; slide: number; t: number; dur: number; hold: number }> = Array.from({ length: MAX_SCREEN_CUTS }, () => ({
+    on: false,
+    x: 0.5,
+    y: 0.5,
+    angle: 0,
+    slide: 0,
+    t: 0,
+    dur: 1,
+    hold: 0.2,
+  }))
+
   /** Anamorphic streak: resting level for the hottest pixels, plus kicks. */
   streakBase = 0.1
   streakKick = 0
@@ -142,6 +159,10 @@ export class PostState {
     for (const v of this.shockData) v.set(0, 0, 0, 0)
     for (const v of this.hazeData) v.set(0, 0, 0, 0)
     this.shockOn = this.hazeOn = false
+    for (const c of this.cuts) c.on = false
+    for (const v of this.cutData) v.set(0, 0, 0, 0)
+    this.cutGlow.fill(0)
+    this.cutOn = false
     this.blast.strength = 0
     this.blastRays = 0
     this.streakKick = 0
@@ -309,6 +330,37 @@ export class PostState {
   }
 
   /**
+   * Slice the image itself along a screen line through (x, y) (uv) at
+   * `angle` radians: the two sides slide apart along it by `slide` screen
+   * heights with a white-hot seam, hold for `hold` seconds, then knit back
+   * over the rest of `dur` (real seconds).
+   */
+  cut(x: number, y: number, angle: number, slide = 0.03, dur = 0.9, hold = 0.18) {
+    if (this.reduce) slide *= 0.4
+    let c = this.cuts.find((q) => !q.on)
+    if (!c) c = this.cuts.reduce((a, b) => (a.t / a.dur > b.t / b.dur ? a : b))
+    Object.assign(c, { on: true, x, y, angle, slide, t: 0, dur, hold })
+  }
+
+  /** A screen cut along the projection of the world segment a-b (skipped when it is behind the camera). */
+  cutWorld(a: THREE.Vector3, b: THREE.Vector3, slide = 0.03, dur = 0.9, hold = 0.18, camera = this.camera) {
+    if (!camera) return
+    const pa = _cA.copy(a).project(camera)
+    const pb = _cB.copy(b).project(camera)
+    if (pa.z > 1 && pb.z > 1) return
+    // pull a point that is behind the camera onto the visible side so the line keeps its direction
+    if (pa.z > 1) pa.lerp(pb, 0.999)
+    if (pb.z > 1) pb.lerp(pa, 0.999)
+    const ax = pa.x * 0.5 + 0.5
+    const ay = pa.y * 0.5 + 0.5
+    const bx = pb.x * 0.5 + 0.5
+    const by = pb.y * 0.5 + 0.5
+    const asp = (camera as THREE.PerspectiveCamera).aspect ?? 16 / 9
+    const angle = Math.atan2(by - ay, (bx - ax) * asp)
+    this.cut((ax + bx) / 2, (ay + by) / 2, angle, slide, dur, hold)
+  }
+
+  /**
    * `camera` re-projects the world-anchored effects (rings, haze, light
    * shafts); `wdt` drives the haze, which lives on world time.
    */
@@ -322,6 +374,26 @@ export class PostState {
     this.desat += (this.desatTarget - this.desat) * Math.min(1, rdt * 8)
     this.hurt = Math.max(0, this.hurt - rdt * 1.4)
     this.streakKick = Math.max(0, this.streakKick * Math.exp(-rdt * 5) - rdt * 0.05)
+
+    this.cutOn = false
+    for (let i = 0; i < MAX_SCREEN_CUTS; i++) {
+      const c = this.cuts[i]
+      const v = this.cutData[i]
+      if (!c.on) {
+        v.w = 0
+        this.cutGlow[i] = 0
+        continue
+      }
+      c.t += rdt
+      // snaps open in a few frames, holds, then eases shut
+      const open = Math.min(1, c.t / 0.05)
+      const close = c.t < c.hold ? 1 : Math.max(0, 1 - (c.t - c.hold) / Math.max(0.01, c.dur - c.hold))
+      const k = open * close * close * (3 - 2 * close)
+      v.set(c.x, c.y, c.angle, c.slide * k)
+      this.cutGlow[i] = Math.max(0, 1 - c.t / (c.hold + 0.25)) * (this.reduce ? 0.4 : 1)
+      if (c.t >= c.dur) c.on = false
+      this.cutOn = true
+    }
 
     this.shockOn = this.hazeOn = false
     for (let i = 0; i < MAX_SHOCKS; i++) {

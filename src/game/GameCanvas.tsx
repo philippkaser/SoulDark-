@@ -146,6 +146,9 @@ function PowerPass({ game, quality }: { game: Game | null; quality: Quality }) {
     effect.set('uHazeClock', p.hazeClock)
     effect.set('uFringe', quality === 'low' ? 0 : p.fringe)
     effect.set('uHurt', p.hurt)
+    effect.uniforms.get('uCut')!.value = p.cutData
+    effect.uniforms.get('uCutGlow')!.value = p.cutGlow
+    effect.set('uCutOn', p.cutOn ? 1 : 0)
     effect.set('uClock', clock.elapsedTime)
   })
   return <primitive object={pass} />
