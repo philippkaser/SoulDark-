@@ -100,6 +100,10 @@ export function SettingsPanel() {
         <span>Reduce flashes and impact frames</span>
         <input type="checkbox" checked={s.reduceFlashes} onChange={(e) => set({ reduceFlashes: e.target.checked })} />
       </label>
+      <label className="row check">
+        <span>Controller vibration</span>
+        <input type="checkbox" checked={s.vibration} onChange={(e) => set({ vibration: e.target.checked })} />
+      </label>
       <div className="note">Graphics changes rebuild the battlefield.</div>
     </div>
   )

@@ -138,12 +138,12 @@ export class Lance implements System {
     g.fx.explosion(p, 60, { scorch: false, debris: false })
     for (let i = 0; i < 8; i++) g.fx.after(i * 0.18, () => g.fx.explosion(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 120, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 120)), 20 + Math.random() * 15, { scorch: false, debris: false, sound: i % 2 === 0 }))
     g.sky.flash(_v.subVectors(p, g.camera.position).normalize(), 2, '#ffd8b0')
-    g.post.flashTo(0.5, '#fff0e0', 1.5)
+    g.post.flashTo(0.35, '#fff0e0', 1.8)
     g.post.impactFrames([1, 2, 1, 0], 1 / 18)
     g.post.rays(p, 1.6, 2.6, '#ffd6b0')
     g.post.shock(p, g.camera, 0.045)
     g.post.shock(p, g.camera, 0.03, { delay: 0.22, speed: 1.2, width: 1.6 })
-    g.post.streak(1.8, p)
+    g.post.streak(1.2, p)
     g.cam.addTrauma(0.5)
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(1, 0.2, 0.3).normalize(), p)
     g.slicer.slice([this.station], plane, {
@@ -159,6 +159,7 @@ export class Lance implements System {
     })
     g.score.kill('station', 1, p)
     g.player.gainDivinity(40)
+    g.feel.killCam(p, { style: 'behind', size: 70, dur: 1.5, delay: 0.25, text: 'SOL LANCE DESTROYED' })
     audio.musicSting('big')
   }
 

@@ -48,6 +48,8 @@ interface UIState {
   dead: boolean
   pointerLocked: boolean
   showHelp: boolean
+  /** Cinema bars (kill cams). */
+  letterbox: boolean
 
   setScreen: (s: Screen) => void
   setMode: (m: Mode) => void
@@ -64,6 +66,7 @@ interface UIState {
   setDead: (d: boolean) => void
   setPointerLocked: (v: boolean) => void
   setShowHelp: (v: boolean) => void
+  setLetterbox: (v: boolean) => void
   updateSave: (patch: Partial<SaveData>) => void
   updateSettings: (patch: Partial<Settings>) => void
 }
@@ -85,6 +88,7 @@ export const useUI = create<UIState>((set, get) => ({
   dead: false,
   pointerLocked: false,
   showHelp: true,
+  letterbox: false,
 
   setScreen: (screen) => set({ screen }),
   setMode: (mode) => set({ mode }),
@@ -109,6 +113,9 @@ export const useUI = create<UIState>((set, get) => ({
   setDead: (dead) => set({ dead }),
   setPointerLocked: (pointerLocked) => set({ pointerLocked }),
   setShowHelp: (showHelp) => set({ showHelp }),
+  setLetterbox: (letterbox) => {
+    if (get().letterbox !== letterbox) set({ letterbox })
+  },
   updateSave: (patch) => {
     const save = { ...get().save, ...patch }
     persist(save)

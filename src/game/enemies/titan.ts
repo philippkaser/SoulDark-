@@ -130,6 +130,7 @@ export class Titans implements System {
     g.fx.ring(_v.copy(p).setY(0.1), 14, '#ffb070', 0.5, { thick: 0.1, alpha: 0.6 })
     const d = p.distanceTo(g.player.pos)
     g.cam.addTrauma(clamp(0.5 - d / 120, 0, 0.35))
+    g.rumble(0.55, 0.12, 170, p, 110)
     // soldiers underfoot have a bad day
     g.damage({ t: 'sphere', c: p, r: 5 }, { id: newHitId(), kind: 'blast', dmg: 500, power: 14, origin: p, friendly: false })
   }
@@ -230,6 +231,8 @@ export class Titans implements System {
     for (const m of baked) holder.add(m)
     this.root.add(holder)
     t.model.container.visible = false
+    // a slow beat to watch it go: low by the hero's boots, looking up at the falling giant
+    g.feel.killCam(new THREE.Vector3(t.x, 14, t.z), { style: 'crane', size: 36, dur: 1.6, delay: 0.35 })
     g.slicer.slice([holder], plane, {
       topple: true,
       gravity: 16,
@@ -238,14 +241,16 @@ export class Titans implements System {
       glow: 1.6,
       onCrash: (p, size) => {
         g.terrain.crater(p.x, p.z, 10 + size * 0.25, 3.5, { ejecta: 1 })
-        g.fx.explosion(p.setY(4), 16)
+        g.fx.explosion(p.setY(4), 12)
         g.fx.groundShock(p, size * 0.8)
+        g.rumble(0.8, 0.4, 500, p, 200)
         g.cam.addTrauma(0.9)
         audio.landing(4)
       },
     })
     this.root.remove(holder)
-    g.fx.after(0.1, () => g.fx.explosion(_v.set(t.x, 26, t.z).clone(), 12))
+    // a burst at the wound, kept small: the falling halves are the show
+    g.fx.after(0.1, () => g.fx.explosion(_v.set(t.x, 26, t.z).clone(), 8, { debris: false }))
   }
 
   update(dt: number) {
@@ -357,6 +362,10 @@ export class Titans implements System {
       g.fx.groundShock(_b.clone(), 16, '#ff9a60')
       g.fx.explosion(_v.copy(_a).lerp(_b, 0.7).setY(1), 6, { scorch: false })
       g.cam.addTrauma(0.6)
+      // the camera is thrown back from where the blade lands
+      _v.copy(_a).lerp(_b, 0.7)
+      g.cam.kickFrom(_v, 0.45 * clamp(1 - _v.distanceTo(pl.pos) / 90, 0.2, 1))
+      g.rumble(0.9, 0.4, 380, _v, 120)
       g.damage(line, { id: newHitId(), kind: 'blast', dmg: 800, power: 30, origin: _a.clone(), friendly: false })
       // does the blade meet the hero?
       const pd = Math.hypot(pl.pos.x - _a.x, pl.pos.z - _a.z)
@@ -394,6 +403,8 @@ export class Titans implements System {
       g.fx.groundShock(_v.clone().setY(0), 40, '#ffb070')
       g.fx.explosion(_v.clone().setY(1), 5, { scorch: false })
       g.cam.addTrauma(0.6)
+      g.cam.kickFrom(_v, 0.4 * clamp(1 - _v.distanceTo(g.player.pos) / 80, 0.2, 1))
+      g.rumble(1, 0.3, 420, _v, 110)
       audio.landing(4)
       g.damage({ t: 'sphere', c: _v.clone(), r: 12 }, { id: newHitId(), kind: 'blast', dmg: 600, power: 28, origin: _v.clone(), friendly: false })
       t.ring = 0

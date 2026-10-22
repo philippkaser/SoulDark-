@@ -420,10 +420,13 @@ export class Fx {
   /** The burst of a parry; tier sets the scale. */
   parryBurst(p: THREE.Vector3, normal: THREE.Vector3, tier: number) {
     const s = 1 + tier * 1.4
-    this.flare(p, 3 * s, '#fff2d0', 0.25 + tier * 0.08)
+    // the flash and the bubble stay hand-sized even for a warhead: at the hero's chest, right in front of the
+    // lens, anything bigger whites out the frame; the rings and sparks carry the scale instead
+    const core = Math.min(s, 2.6)
+    this.flare(p, 3 * core, '#fff2d0', 0.22 + tier * 0.05)
     this.ring(p, 2.5 * s, '#fff0c8', 0.35 + tier * 0.1, { normal, thick: 0.12 })
     this.ring(p, 5 * s, '#ffcf70', 0.5 + tier * 0.15, { normal, thick: 0.06, alpha: 1 })
-    this.bubble(p, 1.5 * s, '#ffd890', 0.3 + tier * 0.1, 1.2)
+    this.bubble(p, 1.5 * core, '#ffd890', 0.3 + tier * 0.08, 1)
     this.light(p, '#fff0d0', 120 * s, 20 * s, 7)
     if (tier >= 2) this.ring(_p.copy(p).setY(this.gy(p.x, p.z) + 0.1), 14 * s, '#ffdf9a', 0.8, { thick: 0.08 })
     // the lens flares and the blade throws brief shafts; kept low, the burst itself is already blinding
@@ -437,11 +440,13 @@ export class Fx {
     gp.plasmaRing(p, normal, 2 + Math.min(2, tier) * 1.2, n, WHITE_GOLD, { expand: 0.2 + tier * 0.04, fill: 0.9, thick: 0.2 + tier * 0.1, life: 0.4 + tier * 0.1, size: 0.03 + tier * 0.008, stretch: 0.03, heat })
     gp.sparkShower(p, normal, n * 0.8, 16 + tier * 10, 0.85, GOLD, { size: 0.035 + tier * 0.01, life: 0.55 + tier * 0.15, drag: 1.6, heat })
     // big parries lay a flat disc of sparks across the battlefield, and motes that hang in the air
-    // the disc skims the ground: a shockwave of sparks across the plain, clear of the camera
-    const low = _p.copy(p).setY(Math.max(0.4, p.y - 1.1))
+    // the disc skims the ground: a shockwave of sparks across the plain, below the camera (at eye level it
+    // would be a white band through the hero, and divine time keeps it hanging there for seconds)
+    const low = _p.copy(p).setY(Math.max(this.gy(p.x, p.z) + 0.3, p.y - 1.25))
     if (tier >= 3) {
-      gp.plasmaRing(low, UP, 48, 1800, AMBER, { expand: 0.8, fill: 0.6, thick: 0.5, life: 2, size: 0.11, stretch: 0.035, heat: 3 })
-      gp.plasmaRing(p, UP, 30, 800, WHITE_GOLD, { expand: 0.6, fill: 0.05, thick: 0.15, life: 1.6, size: 0.09, stretch: 0.04, heat: 3.5 })
+      gp.plasmaRing(low, UP, 48, 1100, AMBER, { expand: 0.8, fill: 0.55, thick: 0.45, life: 2, size: 0.08, stretch: 0.035, heat: 2.2 })
+      // a ring of light blasted off the blade around the parry axis
+      gp.plasmaRing(p, normal, 9, 420, WHITE_GOLD, { expand: 0.7, fill: 0.05, thick: 0.12, life: 1, size: 0.06, stretch: 0.04, heat: 2.6 })
       gp.motes(p, 360, 16, GOLD, UP, { life: 6, size: 0.14, drift: 2.5 })
       gp.motes(p, 160, 6, WHITE_GOLD, null, { life: 4, size: 0.1, drift: 1 })
     } else if (tier >= 2) {

@@ -159,6 +159,17 @@ function BossBars() {
   )
 }
 
+/** Cinema bars for kill cams; the HUD chrome fades while they are down. */
+function Letterbox() {
+  const on = useUI((s) => s.letterbox)
+  return (
+    <div className={`letterbox${on ? ' on' : ''}`}>
+      <div className="bar top" />
+      <div className="bar bottom" />
+    </div>
+  )
+}
+
 function Objective() {
   const objective = useUI((s) => s.objective)
   if (!objective) return null
@@ -223,6 +234,8 @@ export function HUD({ game }: { game: Game }) {
   const score = useRef<HTMLDivElement>(null!)
   const combo = useRef<HTMLDivElement>(null!)
   const feed = useRef<HTMLDivElement>(null!)
+  const burst = useRef<HTMLDivElement>(null!)
+  const cine = useUI((s) => s.letterbox)
 
   useEffect(() => {
     let raf = 0
@@ -268,13 +281,20 @@ export function HUD({ game }: { game: Game }) {
       // style
       const s = game.score
       if (s.rank !== lastRank) {
+        // from S up, climbing a rank gets a flourish: the letter slams in and a ring of light bursts off it
+        const flourish = s.rank > lastRank && s.rank >= 4 && lastRank >= 0
         lastRank = s.rank
         rankLetter.current.textContent = RANKS[s.rank].letter
         rankName.current.textContent = RANKS[s.rank].name
         rankLetter.current.dataset.rank = String(s.rank)
-        rankLetter.current.classList.remove('pop')
+        rankLetter.current.classList.remove('pop', 'flourish')
+        burst.current.classList.remove('go')
         void rankLetter.current.offsetWidth
-        rankLetter.current.classList.add('pop')
+        rankLetter.current.classList.add(flourish ? 'flourish' : 'pop')
+        if (flourish) {
+          burst.current.dataset.rank = String(s.rank)
+          burst.current.classList.add('go')
+        }
       }
       rankFill.current.style.width = `${s.progress * 100}%`
       shownScore += (s.points - shownScore) * Math.min(1, dt * 8)
@@ -298,11 +318,12 @@ export function HUD({ game }: { game: Game }) {
   }, [game])
 
   return (
-    <div className="hud">
+    <div className={`hud${cine ? ' cine' : ''}`}>
       <canvas ref={canvas} className="hud-canvas" />
       <BossBars />
       <Objective />
       <div className="style">
+        <div className="rank-burst" ref={burst} />
         <div className="rank-letter" ref={rankLetter} />
         <div className="rank-name" ref={rankName} />
         <div className="rank-bar">
@@ -329,9 +350,10 @@ export function HUD({ game }: { game: Game }) {
           </div>
         </div>
       </div>
+      <Help />
+      <Letterbox />
       <Banner />
       <Stamps />
-      <Help />
     </div>
   )
 }

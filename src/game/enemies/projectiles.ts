@@ -56,6 +56,24 @@ const _w = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 const Z = new THREE.Vector3(0, 0, 1)
 
+/** How far a returned weapon keeps above the ground on its way out (m): a crater rim must not catch a warhead at the hero's feet. */
+export const RETURN_CLEAR: Record<ProjKind, number> = { shell: 1.2, missile: 1.2, nuke: 22, meteor: 7 }
+const LOOK = [0.06, 0.15, 0.3, 0.5, 0.8]
+
+/**
+ * The climb rate (m/s) something at `pos` moving at `vel` needs to stay
+ * `clear` metres above the ground over the next second of flight (sampled
+ * ahead along its heading). Negative when it has room to spare.
+ */
+export function climbRate(pos: THREE.Vector3, vel: THREE.Vector3, ground: { heightAt(x: number, z: number): number }, clear: number) {
+  let need = (ground.heightAt(pos.x, pos.z) + clear - pos.y) * 8
+  for (const t of LOOK) {
+    const h = ground.heightAt(pos.x + vel.x * t, pos.z + vel.z * t) + clear
+    need = Math.max(need, (h - pos.y) / t)
+  }
+  return need
+}
+
 // ---------------------------------------------------------------------------
 // Meshes
 // ---------------------------------------------------------------------------
@@ -309,7 +327,11 @@ export class Projectiles implements System {
     // fx.nuke throws the light shafts and heat haze; the air ripples in a volley of shock rings
     for (let i = 0; i < 3; i++) g.post.shock(at, g.camera, (far ? 0.05 : 0.07) - i * 0.012, { delay: i * 0.16, speed: 1.9 - i * 0.35, width: 1 + i * 0.6 })
     g.cam.addTrauma(far ? 0.4 : 1.2)
-    if (!far) g.cam.kickFrom(at, 0.8)
+    if (!far) {
+      g.cam.kickFrom(at, 0.8)
+      audio.deafen(2.2, 1)
+      g.rumble(1, 1, 1300)
+    } else g.rumble(0.35, 0.2, 500)
     audio.nukeFlash()
     g.damage({ t: 'sphere', c: at, r: 60 * scale + 20 }, { id: newHitId(), kind: 'blast', dmg: 20000, power: 60, origin: at, friendly: byHero || far })
     // the shockwave crosses the plain
@@ -534,11 +556,12 @@ export class Projectiles implements System {
 
   private steerReturn(p: Proj, dt: number) {
     const t = p.target
+    let d = Infinity
     if (t && t.alive) {
       t.aim(_v)
       const sp = Math.max(p.vel.length(), p.spec.returnSpeed)
       _w.subVectors(_v, p.pos)
-      const d = _w.length()
+      d = _w.length()
       if (d < t.radius + sp * dt + 1) {
         p.pos.copy(_v)
         t.struck(p.kind === 'nuke' ? 99999 : p.kind === 'meteor' ? 900 : 600, _v, p.kind)
@@ -551,6 +574,13 @@ export class Projectiles implements System {
       p.vel.lerp(_w, Math.min(1, dt * 4))
     } else if (p.kind !== 'nuke') {
       p.vel.y -= 6 * dt
+    }
+    // climb clear of the terrain near the hero (and until the target is close): it goes home, not into the crater rim
+    const g = this.game
+    const clear = RETURN_CLEAR[p.kind]
+    if (d > clear * 3 + 30 && p.pos.distanceTo(g.player.pos) < 320) {
+      const need = climbRate(p.pos, p.vel, g.terrain, clear)
+      if (p.vel.y < need) p.vel.y = Math.min(need, p.vel.length() * 0.85)
     }
     // returned weapons cut through the ranks on the way home
     if (p.pos.y < 4) this.game.damage({ t: 'sphere', c: p.pos, r: 2.5 }, { id: newHitId(), kind: 'reflect', dmg: 200, power: 20, origin: p.pos, dir: p.vel.clone().normalize(), friendly: true })
@@ -603,6 +633,7 @@ export class Projectiles implements System {
         s.reachedPlayer = true
         audio.nukeShock()
         g.cam.addTrauma(1.1)
+        g.rumble(1, 0.7, 1500)
         g.gust(s.c, 14)
         g.post.shock(_v.copy(pl.pos).setY(1.5), g.camera, 0.05)
         g.post.kickChroma(1.5)

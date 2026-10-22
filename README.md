@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the punch's wave and the sky split) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the punch's wave and the sky split, vibration merging, kill cams, returned warheads clearing the ground) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -73,6 +73,10 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 - Anamorphic lens streaks from the hottest pixels, kicked by parries and explosions
 - Trauma camera shake, FOV kicks, directional kicks, a vertigo dolly-zoom on divine parries and scripted cinematic shots (the nuke return, the finale)
 - Afterimages from frozen skeleton copies, sword trails, a verlet-cloth coat and scarf
+- Feel (`game/feel.ts`): slash hitstop that grows with what a swing cuts down, the camera leaning into each swing, a lens punch on huge multi-kills, a bouncing camera on meteor-dive landings, and a flourish of light when the style rank reaches S, SS and SSS
+- The flash-step breaks the sound barrier: a Prandtl-Glauert vapor cone snaps around the hero, a double-crack boom, dust ripped up along the path and a shock ring where he stops. Three steps inside 1.2 s chain into a bigger boom and a FLASH STEP feat
+- Kill cams: when the Colossus falls, the Sol Lance explodes, the last airship of a fleet goes down or the citadel spire topples, the game drops into slow motion behind cinema bars for a short crane, orbit or over-the-shoulder shot. Any input skips it; it never interrupts another cinematic
+- Controller vibration (toggle in Settings) on parries by tier, blocks, hits, nearby blasts (fading with distance), Colossus footsteps, slams, the Heaven Splitter, the punch's coil and release, a caught beam and a nuke's shockwave
 
 **Destruction**
 - A real-time slicer: meshes are cloned into two halves clipped by the cut plane, the cut faces glow molten, and the halves topple, slide or tumble, crash and dissolve. Spires, cannons, airships, the Colossus (its posed skin is baked to static geometry first), the Sol Lance station and the moon can all be cut
@@ -89,6 +93,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 
 **Audio (all procedural WebAudio)**
 - Synthesized slashes, parry rings by tier, cannons, missiles, sirens, nuclear flashes with distance-delayed shock, beams, titan footsteps and roars
+- A glue compressor and a brick-wall limiter on the master, the music ducking under huge booms, a generated wide-plain convolution reverb (late slap-backs off the ridges) that explosions and big hits are sent into, and ears that ring after a near nuke or a Serious Punch (everything muffles under a thin tinnitus tone for a couple of seconds)
 - A generative score in D minor whose layers rise with the wave and your style rank
 
 ## Architecture
@@ -105,6 +110,7 @@ src/
     Game.ts         systems, damage routing, threats, reflect targeting, the frame loop
     create.ts       wires every system and the sandbox spawn table
     time.ts         hitstop, divine time, slowmo, time stop
+    feel.ts         controller vibration, kill cams, the flash-step's sonic boom, multi-kill and rank-up feedback
     camera.ts       follow camera, trauma, kicks, dolly-zoom, cinematic shots
     post.ts         screen-effect requests (flash, shocks, haze, light shafts, streaks) feeding the post effects
     player/         hero model, clips, controller, flying slashes, the fist (punch.ts: jab, Serious Punch, its wave)

@@ -67,8 +67,8 @@ export class HeroPower {
     const g = this.g
     this.endCharge()
     g.levitate.release(fwd, 0.6 + k * 0.7)
-    // the cut is bright enough already: the aura only blazes, no burst of sparks
-    g.aura.flare(0.3 + k * 0.35, undefined, false)
+    // the cut is bright enough already: the aura only blazes (briefly: the hero must stay a silhouette against the cut), no burst of sparks
+    g.aura.flare(0.18 + k * 0.17, undefined, false)
     // lightning races down the cut, just behind the wave of light
     const reach = Math.min(a.distanceTo(b), 50 + k * 150)
     _v.copy(a).addScaledVector(fwd, reach)
