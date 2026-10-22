@@ -274,6 +274,8 @@ export class Game {
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
     audio.rumble(0.6 * k, 3)
+    // a full cut carries on to the horizon and notches the mountains
+    this.props.mountains.cleave(a, fwd, k)
   }
 
   /** Points for Judgment's cuts: enemies first, then the air around the hero. */
@@ -375,6 +377,7 @@ export class Game {
     this.slashes.update(pdt)
     for (const s of this.systems) s.update(wdt, rdt)
     this.slicer.update(wdt)
+    this.props.update(wdt, rdt)
     this.props.root.updateMatrixWorld()
     this.scorch.update(rdt)
     this.terrain.update(rdt)

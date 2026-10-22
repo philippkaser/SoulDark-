@@ -3,10 +3,11 @@ import { audio } from '../../audio/audio'
 import { standard } from '../../engine/gfx/materials'
 import { rockTexture } from '../../engine/gfx/textures'
 import { shapeHitsCapsule, type Shape } from '../../engine/geom'
-import { mulberry32, TAU } from '../../engine/math'
+import { mulberry32 } from '../../engine/math'
 import type { Game } from '../Game'
 import type { Damageable, Hit } from '../types'
 import { spireDefs, type SpireDef } from './layout'
+import { Mountains } from './mountains'
 
 interface Spire {
   def: SpireDef
@@ -63,59 +64,11 @@ function spireBaseGeometry(d: SpireDef, deep: number) {
   return g
 }
 
-/** A ring of mountains on the horizon: a band whose top edge follows ridged noise. */
-function ridge(radius: number, base: number, amp: number, seed: number, color: string) {
-  const segs = 900
-  const r = mulberry32(seed)
-  const octs = [7, 19, 47, 113].map((n) => Array.from({ length: n }, () => r()))
-  const sample = (u: number) => {
-    let h = 0
-    let w = 1
-    let norm = 0
-    for (const o of octs) {
-      const x = u * o.length
-      const i = Math.floor(x)
-      const f = x - i
-      const s = f * f * (3 - 2 * f)
-      const v = o[i % o.length] + (o[(i + 1) % o.length] - o[i % o.length]) * s
-      h += (1 - Math.abs(v * 2 - 1)) * w
-      norm += w
-      w *= 0.5
-    }
-    return h / norm
-  }
-  const pos: number[] = []
-  const idx: number[] = []
-  for (let i = 0; i <= segs; i++) {
-    const u = i / segs
-    const a = u * TAU
-    const h = base + Math.pow(sample(u), 2.2) * amp
-    const x = Math.sin(a) * radius
-    const z = Math.cos(a) * radius
-    pos.push(x, -40, z, x * 0.985, h, z * 0.985)
-    if (i < segs) {
-      const k = i * 2
-      idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
-    }
-  }
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  g.setIndex(idx)
-  g.computeVertexNormals()
-  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, roughness: 1, side: THREE.DoubleSide }))
-  mesh.renderOrder = -2
-  return mesh
-}
-
-function mountainRing() {
-  const group = new THREE.Group()
-  group.add(ridge(2300, 80, 620, 77, '#1a1016'), ridge(1350, 20, 220, 78, '#24161a'))
-  return group
-}
-
 /** Rock spires across the plain (sliceable) and the mountains on the horizon. */
 export class Props implements Damageable {
   readonly root = new THREE.Group()
+  /** The mountain rings on the horizon (boreable, notchable). */
+  readonly mountains: Mountains
   private spires: Spire[] = []
   private game: Game
   private mat: THREE.MeshStandardMaterial
@@ -125,8 +78,15 @@ export class Props implements Damageable {
     const tex = rockTexture()
     tex.repeat.set(2, 3)
     this.mat = standard({ color: '#6e625e', roughness: 0.95, map: tex, rim: 0.15, rimColor: '#ff9a60' })
-    this.root.add(mountainRing())
+    this.mountains = new Mountains(game)
+    this.root.add(this.mountains.root)
+    game.boreMountains = (o, d, r, s) => this.mountains.bore(o, d, r, s)
     this.build()
+  }
+
+  /** World dt (the carves, rubble and dust live on the world clock) and real dt. */
+  update(dt: number, rdt: number) {
+    this.mountains.update(dt, rdt)
   }
 
   private build() {
@@ -160,6 +120,7 @@ export class Props implements Damageable {
 
   reset() {
     this.build()
+    this.mountains.reset()
   }
 
   /** Collision circles for the hero and the legions. */
