@@ -45,6 +45,11 @@ export class TimeCtl {
     this.slowScale = scale
   }
 
+  /** End a cinematic slow motion early (a skipped kill cam). */
+  cancelSlowmo() {
+    this.slowLeft = 0
+  }
+
   stop(on: boolean) {
     this.stopped = on
   }

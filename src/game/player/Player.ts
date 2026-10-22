@@ -3,6 +3,7 @@ import { audio, type LoopHandle } from '../../audio/audio'
 import { clamp, damp, turnToward, wrapAngle } from '../../engine/math'
 import { Avatar } from '../../engine/rig/avatar'
 import type { InputFrame } from '../../input/input'
+import { slashHitstop } from '../feel'
 import type { Game } from '../Game'
 import { newHitId, type ParryResult, type Tier } from '../types'
 import { ARENA_HARD, ARENA_R } from '../world/layout'
@@ -602,11 +603,17 @@ export class Player {
       audio.slash(1)
     }
     audio.airSlash()
-    g.cam.kick(dir, 0.08)
+    // the camera leans with the swing: across for the sweeps, down for the finisher
+    const sweep = n === 4 ? 0 : n % 2 === 1 ? 1 : -1
+    _v.set(fwd.z, 0, -fwd.x).multiplyScalar(sweep * 0.07).addScaledVector(dir, 0.08)
+    if (n === 4) _v.y -= 0.1
+    g.cam.kick(_v, 1 + Math.min(1, melee * 0.12))
     g.post.kickChroma(0.25)
     if (melee > 0) {
-      g.time.freeze(n === 4 ? 0.09 : 0.045)
-      g.cam.addTrauma(0.12)
+      // a longer beat the more the swing cuts down
+      g.time.freeze(slashHitstop(melee, n === 4))
+      g.cam.addTrauma(0.12 + Math.min(0.25, melee * 0.025))
+      g.rumble(0.12 + Math.min(0.4, melee * 0.05), 0.35, 70 + Math.min(110, melee * 12))
     }
   }
 
@@ -690,6 +697,7 @@ export class Player {
     const fwd = new THREE.Vector3(Math.sin(this.aimYaw), 0, Math.cos(this.aimYaw))
     this.yaw = this.aimYaw
     const a = new THREE.Vector3(this.pos.x, 0, this.pos.z).addScaledVector(fwd, 1.5)
+    a.y = g.terrain.heightAt(a.x, a.z)
     const b = a.clone().addScaledVector(fwd, len)
     const normal = new THREE.Vector3(fwd.z, 0, -fwd.x)
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, a)
@@ -772,11 +780,19 @@ export class Player {
     g.fx.groundShock(p, 22)
     g.fx.flare(_v.copy(p).setY(0.6), 12, '#fff0c8', 0.3)
     g.fx.light(_v.copy(p).setY(2), '#ffd090', 400, 40, 5)
-    g.cam.addTrauma(0.75)
-    g.post.kickZoom(0.18)
+    // the camera drops with the impact and bounces back; the power gathered on the way down is spent
+    const big = Math.min(1, fall / 30)
+    g.cam.kick(_w.set(0, -1, 0), 0.35 + big * 0.45)
+    g.cam.addTrauma(0.75 + big * 0.3)
+    g.cam.kickFov(6 + big * 8)
+    g.post.kickZoom(0.18 + big * 0.1)
     g.post.impactFrames([2, 0])
-    g.time.freeze(0.08)
-    audio.landing(2)
+    g.post.shock(_v.copy(p).setY(p.y + 0.5), g.camera, 0.02 + big * 0.025, { speed: 1.8, width: 1 })
+    g.levitate.release(null, 1 + big * 0.6)
+    g.aura.flare(0.5)
+    g.time.freeze(0.08 + big * 0.04)
+    g.rumble(0.7 + big * 0.3, 0.6, 260 + big * 240)
+    audio.landing(2 + big * 2)
     g.score.feat('slam', 1)
   }
 
@@ -799,6 +815,7 @@ export class Player {
     g.post.speedLines(0.9, 0.05)
     g.cam.kickFov(14)
     g.fx.afterimage('#ffd080', 0.4)
+    g.feel.dashStart(this.chestPos(_v), this.dashDir)
   }
 
   private updateDash(dt: number) {
@@ -810,9 +827,11 @@ export class Player {
       this.ghostTimer = 0.025
       g.fx.afterimage('#ffc070', 0.3, 0.8)
     }
+    g.feel.dashStep(prev, this.pos, this.dashDir)
     // flash-step: everything in the path is cut
     g.damage({ t: 'capsule', a: prev.setY(1), b: _v.copy(this.pos).setY(1), r: 1.6 }, { id: newHitId(), kind: 'dash', dmg: 200, power: 14, origin: this.pos, dir: this.dashDir, friendly: true })
     if (this.t >= 0.16) {
+      g.feel.dashEnd(this.chestPos(_v), this.dashDir)
       this.vel.multiplyScalar(0.12)
       this.enter(this.grounded ? 'free' : 'air')
     }

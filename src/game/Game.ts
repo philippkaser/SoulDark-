@@ -5,6 +5,7 @@ import { emptyFrame, type InputFrame } from '../input/input'
 import type { Quality } from '../state/settings'
 import { useUI, type BossBar } from '../state/store'
 import { CameraRig } from './camera'
+import { Feel } from './feel'
 import { Aura } from './fx/aura'
 import { groundLattice } from './fx/decal'
 import { Fx } from './fx/fx'
@@ -79,6 +80,8 @@ export class Game {
   readonly aura: Aura
   /** Rocks torn out of the ground by the hero's power, and the cracks under them. */
   readonly levitate: Levitation
+  /** Game feel: vibration, kill cams, the flash-step's sonic boom, rank-up flourishes. */
+  readonly feel: Feel
   readonly wind = new THREE.Vector3(1.6, 0, -0.5)
   private windGust = new THREE.Vector3()
   readonly sun: THREE.DirectionalLight
@@ -143,6 +146,9 @@ export class Game {
     this.aura.setGround(this.terrain)
     this.levitate = new Levitation(this.fx, this.scorch, this.q, cell)
     this.levitate.setGround(this.terrain)
+    this.feel = new Feel(this)
+    this.score.onRankUp = (r) => this.feel.rankUp(r)
+    this.score.onKill = (kind, n) => this.feel.onKill(kind, n)
 
     // light: the eclipse's corona from the north, a bruised sky above
     this.sun = new THREE.DirectionalLight('#ffb27a', 2.2)
@@ -159,10 +165,15 @@ export class Game {
 
     this.root.add(this.sky.mesh, this.ground, this.props.root, this.fx.root, this.slicer.root, this.slashes.root)
     this.root.add(this.player.model.container, this.sun, this.sun.target, this.fill, rimBack)
-    this.root.add(this.aura.root, this.levitate.root, this.lightning.root)
+    this.root.add(this.aura.root, this.levitate.root, this.lightning.root, this.feel.root)
     this.damageables.push(this.props)
     this.player.reset()
     this.cam.snap(this.player.pos, Math.PI)
+  }
+
+  /** Controller vibration (0..1 motors for `ms`), respecting the setting; `at` fades it with the distance from the hero out to `range`. */
+  rumble(strong: number, weak: number, ms: number, at?: THREE.Vector3, range?: number) {
+    this.feel.rumble(strong, weak, ms, at, range)
   }
 
   /** Register a gameplay system (enemies, threats, the director). */
@@ -327,6 +338,7 @@ export class Game {
     this.lightning.clear()
     this.aura.reset()
     this.levitate.clear()
+    this.feel.reset()
     this.slicer.clear()
     this.slashes.clear()
     this.props.reset()
@@ -373,6 +385,7 @@ export class Game {
     this.wind.set(1.6 + Math.sin(this.clock * 0.7) * 0.8, 0, -0.5 + Math.cos(this.clock * 0.4) * 0.6).add(this.windGust)
 
     this.director?.input(frame)
+    this.feel.update(rdt, pdt, frame, playing && inputEnabled)
     this.player.update(pdt, frame, playing && inputEnabled)
     this.slashes.update(pdt)
     for (const s of this.systems) s.update(wdt, rdt)
