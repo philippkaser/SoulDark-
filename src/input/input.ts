@@ -49,6 +49,39 @@ export const emptyFrame = (): InputFrame => ({
   usingGamepad: false,
 })
 
+/** What the pad's motors are doing: magnitudes 0..1, when it stops and when it was last sent (ms). */
+export interface Rumble {
+  strong: number
+  weak: number
+  until: number
+  sent: number
+}
+
+/** Requests closer together than this only go through when they are clearly stronger or last longer. */
+export const RUMBLE_GAP = 50
+
+/**
+ * Merge a vibration request into what is playing. Returns the effect to send,
+ * or null when the request adds nothing (or arrives too soon after the last
+ * one): a hundred small hits in a frame make one buzz, not a hundred.
+ */
+export function mergeRumble(cur: Rumble, strong: number, weak: number, ms: number, now: number): Rumble | null {
+  strong = Math.min(1, Math.max(0, strong))
+  weak = Math.min(1, Math.max(0, weak))
+  if ((strong <= 0.01 && weak <= 0.01) || ms <= 0) return null
+  const live = now < cur.until
+  const s = live ? Math.max(cur.strong, strong) : strong
+  const w = live ? Math.max(cur.weak, weak) : weak
+  const until = Math.max(live ? cur.until : 0, now + Math.min(ms, 5000))
+  if (live) {
+    const stronger = s > cur.strong + 0.08 || w > cur.weak + 0.08
+    const longer = until > cur.until + 60
+    if (!stronger && !longer) return null
+    if (now - cur.sent < RUMBLE_GAP && !stronger) return null
+  }
+  return { strong: s, weak: w, until, sent: now }
+}
+
 class InputManager {
   private keys = new Set<string>()
   private pressed = new Set<string>()
@@ -219,6 +252,29 @@ class InputManager {
     this.mouseDY = 0
     this.frame = f
     return f
+  }
+
+  private buzz: Rumble = { strong: 0, weak: 0, until: 0, sent: -1e9 }
+
+  /**
+   * Controller vibration: the strong (low, heavy) and weak (high, buzzy)
+   * motors 0..1 for `ms`. Merged with whatever is still playing (the stronger
+   * of each motor, the later end) and rate-limited; a no-op without a pad
+   * that can vibrate.
+   */
+  rumble(strong: number, weak: number, ms: number) {
+    const pads = typeof navigator !== 'undefined' ? (navigator.getGamepads?.() ?? []) : []
+    const pad = Array.from(pads).find((g) => g && g.connected && g.vibrationActuator)
+    if (!pad?.vibrationActuator) return
+    const now = performance.now()
+    const next = mergeRumble(this.buzz, strong, weak, ms, now)
+    if (!next) return
+    this.buzz = next
+    try {
+      void pad.vibrationActuator.playEffect('dual-rumble', { startDelay: 0, duration: Math.round(next.until - now), strongMagnitude: next.strong, weakMagnitude: next.weak })?.catch?.(() => {})
+    } catch {
+      /* the pad went away */
+    }
   }
 
   private pollGamepad(f: InputFrame, dt: number, sensitivity: number, invertY: boolean) {

@@ -33,6 +33,12 @@ class AudioEngine {
   musicVolume = 0.65
   private score: Score | null = null
   private limits = new Map<string, number>()
+  /** Feel buses: a brick-wall limiter after the glue compressor, the music's ducker, the deafened low-pass, a wide outdoor reverb. */
+  private limiter!: DynamicsCompressorNode
+  private duckGain!: GainNode
+  private deafFilter!: BiquadFilterNode
+  private bigVerb!: ConvolverNode
+  private bigSend!: GainNode
 
   init() {
     if (this.ctx) {
@@ -51,18 +57,33 @@ class AudioEngine {
     this.comp.release.value = 0.2
     this.master = ctx.createGain()
     this.master.gain.value = this.volume
-    this.master.connect(this.comp).connect(ctx.destination)
+    // the glue compressor, then a brick wall: a nuke on top of a nuke never clips
+    this.limiter = ctx.createDynamicsCompressor()
+    this.limiter.threshold.value = -1.5
+    this.limiter.knee.value = 0
+    this.limiter.ratio.value = 20
+    this.limiter.attack.value = 0.001
+    this.limiter.release.value = 0.12
+    this.master.connect(this.comp).connect(this.limiter).connect(ctx.destination)
+    // the world's sound goes deaf after a near blast; the music ducks under huge booms
+    this.deafFilter = ctx.createBiquadFilter()
+    this.deafFilter.type = 'lowpass'
+    this.deafFilter.frequency.value = 20000
+    this.deafFilter.Q.value = 0.9
+    this.deafFilter.connect(this.master)
+    this.duckGain = ctx.createGain()
+    this.duckGain.connect(this.master)
     // the time-warp filter: everything muffles in divine time
     this.warpFilter = ctx.createBiquadFilter()
     this.warpFilter.type = 'lowpass'
     this.warpFilter.frequency.value = 20000
     this.warpFilter.Q.value = 0.8
-    this.warpFilter.connect(this.master)
+    this.warpFilter.connect(this.deafFilter)
     this.sfx = ctx.createGain()
     this.sfx.connect(this.warpFilter)
     this.musicBus = ctx.createGain()
     this.musicBus.gain.value = this.musicVolume
-    this.musicBus.connect(this.master)
+    this.musicBus.connect(this.duckGain)
     this.amb = ctx.createGain()
     this.amb.gain.value = 0.9
     this.amb.connect(this.warpFilter)
@@ -72,6 +93,12 @@ class AudioEngine {
     this.reverbSend = ctx.createGain()
     this.reverbSend.gain.value = 0.5
     this.reverbSend.connect(this.reverb).connect(this.warpFilter)
+    // explosions and big hits roll out across a wide plain and come back off the ridges
+    this.bigVerb = ctx.createConvolver()
+    this.bigVerb.buffer = this.makeWideImpulse(6.5)
+    this.bigSend = ctx.createGain()
+    this.bigSend.gain.value = 0.55
+    this.bigSend.connect(this.bigVerb).connect(this.warpFilter)
 
     const len = ctx.sampleRate * 2
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate)
@@ -321,6 +348,7 @@ class AudioEngine {
     if (!this.ctx) return
     const o = this.out(undefined, 0.5)!
     const t = this.ctx.currentTime
+    if (size >= 2) this.wide(o, Math.min(0.6, size * 0.12))
     this.tone(o, 'sine', 90, 25, t, 0.5 + size * 0.15, 1)
     this.burst(o, t, 0.5 + size * 0.2, 'lowpass', 2500, 80, 0.9, 0.7, 0.003)
     for (let i = 0; i < 8; i++) this.burst(o, t + 0.05 + Math.random() * 0.5, 0.05, 'bandpass', rnd(1200, 3000), 800, 0.12, 2)
@@ -340,6 +368,7 @@ class AudioEngine {
       this.burst(o, t + 0.02, 0.9, 'bandpass', 6000, 2000, 0.12, 2, 0.01)
     }
     if (tier >= 2) {
+      this.wide(o, 0.25 + (tier - 2) * 0.3)
       this.tone(o, 'sine', 70, 22, t, 1.6, 1)
       this.ring(o, t, 160, [1, 1.33, 1.98, 2.7], 3.5, 0.25)
     }
@@ -412,6 +441,8 @@ class AudioEngine {
     if (!this.ctx) return
     const o = this.out(undefined, 0.9)!
     const t = this.ctx.currentTime
+    this.wide(o, 0.2 + charge * 0.6)
+    if (charge > 0.6) this.duck(0.5 * charge, 2)
     this.burst(o, t, 0.12, 'highpass', 2000, 9000, 1, 1, 0.001)
     this.burst(o, t, 0.5, 'bandpass', 3000, 300, 0.8, 1.2, 0.01)
     this.tone(o, 'sine', 80, 20, t, 1.5 + charge * 2, 1)
@@ -499,6 +530,7 @@ class AudioEngine {
     if (!this.ctx) return
     const o = this.out(undefined, 1.1)!
     const t = this.ctx.currentTime
+    this.wide(o, 0.9)
     this.burst(o, t, 0.05, 'highpass', 3000, 10000, 1, 0.8, 0.0005)
     this.tone(o, 'sine', 62, 18, t, 3.5, 1, 0.004)
     this.tone(o, 'sine', 38, 16, t + 0.03, 4.5, 0.8, 0.02)
@@ -629,6 +661,128 @@ class AudioEngine {
     this.tone(o, 'sawtooth', 90, 140, t, 0.8, 0.04)
   }
 
+  /** Duck the music under a huge boom: down by `amount` (0..1) almost at once, back up over `dur` seconds. */
+  duck(amount: number, dur = 2, delay = 0) {
+    if (!this.ctx) return
+    const t = this.ctx.currentTime + delay
+    const g = this.duckGain.gain
+    const to = Math.max(0.04, 1 - Math.min(0.96, amount))
+    const cur = Math.max(0.04, g.value)
+    // a deeper duck already playing is never lifted early
+    if (to >= cur && t < this.duckUntil) return
+    g.cancelScheduledValues(t)
+    g.setValueAtTime(cur, t)
+    g.linearRampToValueAtTime(Math.min(cur, to), t + 0.05)
+    g.setTargetAtTime(1, t + 0.05 + dur * 0.3, dur * 0.25)
+    this.duckUntil = t + dur * 0.5
+  }
+
+  private duckUntil = 0
+
+  /**
+   * Ears ringing after a near blast: the world muffles to a thud, a thin tone
+   * sings over it, and the sound comes back over `sec` seconds. `level` 0..1
+   * scales how deaf.
+   */
+  deafen(sec = 2, level = 1) {
+    if (!this.ctx || !this.allow('deafen', 0.4)) return
+    const ctx = this.ctx
+    const t = ctx.currentTime
+    const k = Math.min(1, Math.max(0.1, level))
+    const f = this.deafFilter.frequency
+    const low = 220 + (1 - k) * 2200
+    f.cancelScheduledValues(t)
+    f.setValueAtTime(Math.min(Math.max(low, f.value), 20000), t)
+    f.exponentialRampToValueAtTime(low, t + 0.03)
+    f.setValueAtTime(low, t + sec * 0.3)
+    f.exponentialRampToValueAtTime(20000, t + sec)
+    // the ringing is in the ears, not the world: straight to the master, past the muffle
+    const g = ctx.createGain()
+    g.connect(this.master)
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.022 * k, t + 0.08)
+    g.gain.setValueAtTime(0.022 * k, t + sec * 0.4)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + sec * 1.15)
+    const base = rnd(6200, 7400)
+    for (const [m, a] of [
+      [1, 1],
+      [1.0035, 0.6],
+    ] as const) {
+      const o = ctx.createOscillator()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(base * m, t)
+      o.frequency.exponentialRampToValueAtTime(base * m * 0.94, t + sec * 1.15)
+      const og = ctx.createGain()
+      og.gain.value = a
+      o.connect(og).connect(g)
+      o.start(t)
+      o.stop(t + sec * 1.2)
+    }
+    this.duck(0.9 * k, sec * 1.1)
+  }
+
+  /** The flash-step breaks the sound barrier: the double crack of an N-wave, a thump, the boom rolling off. `big` for a chain. */
+  sonicBoom(big = false) {
+    if (!this.ctx || !this.allow('sboom', 0.06)) return
+    const o = this.out(undefined, big ? 0.7 : 0.35)!
+    const t = this.ctx.currentTime
+    const k = big ? 1.4 : 1
+    this.wide(o, big ? 0.7 : 0.25)
+    this.burst(o, t, 0.025, 'highpass', 1800, 6000, 0.75 * k, 0.7, 0.0005)
+    this.burst(o, t + 0.075, 0.03, 'highpass', 1500, 5000, 0.6 * k, 0.7, 0.0005)
+    this.tone(o, 'sine', 95, 30, t, 0.28 * k, 0.8, 0.002)
+    this.burst(o, t + 0.01, 0.5 * k, 'lowpass', 1400, 60, 0.45 * k, 0.7, 0.008)
+    if (big) {
+      this.tone(o, 'sine', 48, 20, t + 0.02, 1.4, 0.8, 0.01)
+      this.burst(o, t + 0.2, 1.6, 'lowpass', 500, 35, 0.35, 0.5, 0.05)
+    }
+  }
+
+  /** Send a sound into the wide outdoor space too (explosions, big hits). */
+  private wide(o: AudioNode, amount: number) {
+    if (!this.bigSend || amount <= 0) return
+    const s = this.ctx!.createGain()
+    s.gain.value = amount
+    o.connect(s).connect(this.bigSend)
+  }
+
+  /**
+   * A wide outdoor space, generated: a short pre-delay, a diffuse tail whose
+   * highs die first (a running low-pass that closes as it decays), and late
+   * slap-backs off far ridges, offset left and right so the space is wide.
+   */
+  private makeWideImpulse(seconds: number) {
+    const ctx = this.ctx!
+    const rate = ctx.sampleRate
+    const len = Math.floor(rate * seconds)
+    const buf = ctx.createBuffer(2, len, rate)
+    const pre = Math.floor(rate * 0.035)
+    const echoes = [0.42, 0.97, 1.65, 2.6, 3.7]
+    for (let c = 0; c < 2; c++) {
+      const ch = buf.getChannelData(c)
+      let y = 0
+      for (let i = pre; i < len; i++) {
+        const t = (i - pre) / rate
+        const env = Math.exp(-t / 1.25) * Math.min(1, t / 0.06)
+        // the low-pass closes as the tail decays: from bright to a distant roar
+        const a = 0.75 * Math.exp(-t * 1.6) + 0.025
+        y += a * ((Math.random() * 2 - 1) - y)
+        ch[i] = y * env * 1.6
+      }
+      for (const [j, e] of echoes.entries()) {
+        const at = Math.floor(rate * (e + (c ? 0.023 : -0.017) * (j + 1)))
+        const n = Math.floor(rate * (0.25 + j * 0.12))
+        const amp = 0.38 * Math.pow(0.62, j)
+        let z = 0
+        for (let i = 0; i < n && at + i < len; i++) {
+          z += 0.08 * ((Math.random() * 2 - 1) - z)
+          ch[at + i] += z * amp * 3 * Math.exp(-i / (rate * 0.12)) * Math.min(1, i / (rate * 0.02))
+        }
+      }
+    }
+    return buf
+  }
+
   explosion(pos: Vec, size: number) {
     if (!this.ctx || !this.allow(`ex${Math.round(size)}`, 0.03)) return
     const o = this.out(pos, 0.5 + Math.min(0.6, size * 0.03), 18 + size * 6, 1400)
@@ -637,6 +791,8 @@ class AudioEngine {
     const delay = d > 60 ? Math.min(1.8, (d / 340) * 0.5) : 0
     const t = this.ctx.currentTime + delay
     const s = Math.min(4, Math.sqrt(size))
+    this.wide(o, Math.min(0.9, 0.15 + size * 0.03))
+    if (size >= 14) this.duck(Math.min(0.75, size / 50), 1 + Math.min(3, size * 0.04), delay)
     this.burst(o, t, 0.12 + s * 0.05, 'lowpass', 7000, 300, 0.9, 0.7, 0.001)
     this.tone(o, 'sine', 100 / s, 22, t, 0.5 + s * 0.4, 1)
     this.burst(o, t + 0.02, 1 + s * 0.8, 'lowpass', 700, 45, 0.8, 0.6, 0.02)
@@ -708,6 +864,8 @@ class AudioEngine {
     if (!this.ctx) return
     const o = this.out(undefined, 1)!
     const t = this.ctx.currentTime
+    this.wide(o, 0.6)
+    this.duck(0.85, 3)
     this.tone(o, 'sine', 45, 20, t, 1.2, 0.9)
     this.burst(o, t, 1.6, 'highpass', 6000, 1500, 0.25, 0.7, 0.01)
     this.choir(o, t, [146.8, 220, 293.7], 3.5, 0.03, 0.3)
@@ -718,6 +876,8 @@ class AudioEngine {
     if (!this.ctx) return
     const o = this.out(undefined, 1)!
     const t = this.ctx.currentTime
+    this.wide(o, 0.9)
+    this.duck(0.8, 4)
     this.burst(o, t, 0.25, 'lowpass', 9000, 500, 1, 0.7, 0.001)
     this.tone(o, 'sine', 50, 16, t, 4, 1)
     this.burst(o, t, 7, 'lowpass', 500, 30, 1, 0.5, 0.05)
@@ -1030,6 +1190,7 @@ class AudioEngine {
     const o = this.out(pos, 1.2, 900, 8000) ?? this.out(undefined, 1.2)!
     const t = this.ctx.currentTime
     const s = Math.min(2, Math.max(0.3, size))
+    this.wide(o, 0.5 * s)
     this.burst(o, t, 0.35, 'lowpass', 1800, 200, 0.7 * s, 0.7, 0.01)
     this.tone(o, 'sine', 46, 17, t, 3 + s * 1.5, 0.9 * Math.min(1, s), 0.02)
     this.burst(o, t + 0.05, 5 + s * 3, 'lowpass', 420, 28, 0.9, 0.5, 0.08)

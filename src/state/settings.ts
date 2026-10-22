@@ -10,6 +10,8 @@ export interface Settings {
   shake: number
   /** Reduce full-screen flashes and inverted impact frames. */
   reduceFlashes: boolean
+  /** Gamepad rumble on hits, parries, blasts and footsteps. */
+  vibration: boolean
 }
 
 export interface SaveData {
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   music: 0.65,
   shake: 1,
   reduceFlashes: false,
+  vibration: true,
 }
 
 const defaults = (): SaveData => ({
