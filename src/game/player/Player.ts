@@ -215,9 +215,11 @@ export class Player {
     if (n >= 1) audio.musicSting(n >= 2 ? 'big' : 'parry')
     g.time.freeze([0.05, 0.085, 0.13, 0.24][n])
     g.time.divine([0.5, 1.0, 1.4, 1.8][n], [0.45, 0.25, 0.18, 0.12][n])
-    g.post.flashTo([0.08, 0.15, 0.3, 0.6][n], '#fff4dc', 6)
-    if (n >= 1) g.post.impactFrames(n >= 3 ? [1, 2, 1, 2, 0] : n >= 2 ? [1, 2, 0] : [1, 0])
-    g.post.kickZoom([0.05, 0.12, 0.2, 0.3][n], hitP, g.camera)
+    // the burst itself is blinding at the top tiers: the screen flash stays modest so the hero reads through it
+    g.post.flashTo([0.08, 0.14, 0.22, 0.28][n], '#fff4dc', 6)
+    // the impact frames stay short and the zoom light: a heavy radial blur over a blinding burst flattens the frame to one tone
+    if (n >= 1) g.post.impactFrames(n >= 3 ? [1, 2, 0, 2, 0] : n >= 2 ? [1, 2, 0] : [1, 0])
+    g.post.kickZoom([0.05, 0.1, 0.13, 0.15][n], hitP, g.camera)
     g.post.speedLines([0.4, 0.8, 1, 1][n], 0.15 + n * 0.1)
     g.post.kickChroma(0.6 + n * 0.5)
     if (n >= 2) g.post.shock(hitP, g.camera, 0.02 + n * 0.008)

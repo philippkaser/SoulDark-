@@ -232,7 +232,7 @@ export class Titans implements System {
     this.root.add(holder)
     t.model.container.visible = false
     // a slow beat to watch it go: low by the hero's boots, looking up at the falling giant
-    g.feel.killCam(new THREE.Vector3(t.x, 16, t.z), { style: 'low', size: 36, dur: 1.5, delay: 0.12 })
+    g.feel.killCam(new THREE.Vector3(t.x, 14, t.z), { style: 'crane', size: 36, dur: 1.6, delay: 0.35 })
     g.slicer.slice([holder], plane, {
       topple: true,
       gravity: 16,

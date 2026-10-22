@@ -275,7 +275,7 @@ export class Game {
     this.slashes.fire(_v.copy(a).setY(a.y + 8 + k * 10), fwd, { width: 14 + k * 26, roll: Math.PI / 2, dmg: 0, speed: 420, life: len / 420 + 0.05, color: '#ffcf70', visualOnly: true })
     // the flash sits down the cut, not on the hero: his silhouette stays dark against it
     fx.flare(_v.copy(a).addScaledVector(fwd, 7 + k * 6).setY(a.y + 1.5), 6 + k * 9, '#fff2d0', 0.3)
-    fx.light(_v.copy(a).addScaledVector(fwd, 10).setY(a.y + 6), '#ffd8a0', 150 + k * 450, 50 + k * 80, 4)
+    fx.light(_v.copy(a).addScaledVector(fwd, 18).setY(a.y + 6), '#ffd8a0', 150 + k * 300, 50 + k * 80, 4)
     if (k > 0.6) this.sky.flash(fwd, 0.6 * k, '#ffd8a0')
     this.cam.addTrauma(0.4 + k * 0.6)
     this.cam.kickFov(6 + k * 8)

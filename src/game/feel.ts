@@ -45,7 +45,7 @@ export function flashChain(times: number[], now: number, window = FLASH_CHAIN) {
   return times.length
 }
 
-export type KillCamStyle = 'low' | 'orbit' | 'behind'
+export type KillCamStyle = 'low' | 'orbit' | 'behind' | 'crane'
 
 /**
  * A kill cam shot. `hero` is copied; `target` is read live (a falling ship
@@ -70,14 +70,23 @@ export function killShot(style: KillCamStyle, hero: THREE.Vector3, target: THREE
     frame: (t, pos, look) => {
       const e = smoothstep(0, dur, t)
       if (style === 'low') {
-        // knee height behind the hero, drifting round him: his silhouette low in frame, the kill towering over it
-        const a = -0.22 + 0.4 * e
-        _v.copy(flat).multiplyScalar(-(4.6 - 0.8 * e)).addScaledVector(side, 1.25)
+        // knee height, off to the hero's side and drifting round him: his silhouette low in frame, the kill
+        // towering over it, and whatever he cut it with running across the frame rather than into the lens
+        const a = 0.7 + 0.35 * e
+        _v.copy(flat).multiplyScalar(-(5 - 0.8 * e))
         _v.applyAxisAngle(UP, a)
         pos.copy(h).add(_v)
-        pos.y = h.y + 0.8 + 0.2 * e
-        look.lerpVectors(_w.copy(h).setY(h.y + 1.5), target, 0.38)
+        pos.y = h.y + 0.8 + 0.25 * e
+        look.lerpVectors(_w.copy(h).setY(h.y + 1.6), target, 0.4)
         return 64 - 8 * e
+      }
+      if (style === 'crane') {
+        // behind the hero, rising over his shoulder: what he cut lies down the line ahead, its halves falling apart
+        _v.copy(flat).multiplyScalar(-(7 + 6 * e)).addScaledVector(side, 2 + 2 * e)
+        pos.copy(h).add(_v)
+        pos.y = h.y + 2.5 + 11 * e
+        look.lerpVectors(_w.copy(h).setY(h.y + 1.5), target, 0.85)
+        return 60 + (Math.max(tele, 34) - 60) * smoothstep(0.1, 1, e)
       }
       if (style === 'orbit') {
         const r = size * 2.2 + 24
@@ -184,7 +193,7 @@ export class Feel {
     this.kc = kc
     this.lastKillCam = g.time.real
     g.cam.play(shot)
-    g.time.slowmo(dur, 0.28)
+    g.time.slowmo(dur, 0.33)
     g.player.invuln = Math.max(g.player.invuln, dur + 0.3)
     g.post.kickChroma(0.5)
     useUI.getState().setLetterbox(true)

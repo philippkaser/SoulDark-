@@ -420,10 +420,13 @@ export class Fx {
   /** The burst of a parry; tier sets the scale. */
   parryBurst(p: THREE.Vector3, normal: THREE.Vector3, tier: number) {
     const s = 1 + tier * 1.4
-    this.flare(p, 3 * s, '#fff2d0', 0.25 + tier * 0.08)
+    // the flash and the bubble stay hand-sized even for a warhead: at the hero's chest, right in front of the
+    // lens, anything bigger whites out the frame; the rings and sparks carry the scale instead
+    const core = Math.min(s, 2.6)
+    this.flare(p, 3 * core, '#fff2d0', 0.22 + tier * 0.05)
     this.ring(p, 2.5 * s, '#fff0c8', 0.35 + tier * 0.1, { normal, thick: 0.12 })
     this.ring(p, 5 * s, '#ffcf70', 0.5 + tier * 0.15, { normal, thick: 0.06, alpha: 1 })
-    this.bubble(p, 1.5 * s, '#ffd890', 0.3 + tier * 0.1, 1.2)
+    this.bubble(p, 1.5 * core, '#ffd890', 0.3 + tier * 0.08, 1)
     this.light(p, '#fff0d0', 120 * s, 20 * s, 7)
     if (tier >= 2) this.ring(_p.copy(p).setY(this.gy(p.x, p.z) + 0.1), 14 * s, '#ffdf9a', 0.8, { thick: 0.08 })
     // the lens flares and the blade throws brief shafts; kept low, the burst itself is already blinding
