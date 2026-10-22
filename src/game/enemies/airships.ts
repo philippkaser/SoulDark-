@@ -263,6 +263,8 @@ export class Airships implements System {
     g.score.kill('airship', 1, s.group.position)
     g.player.gainDivinity(14)
     audio.musicSting('big')
+    // it goes down burning
+    g.fx.explosion(s.group.position.clone(), 7, { scorch: false, debris: false })
     // the last ship of the fleet: watch it go down
     if (!this.list.some((x) => x.alive)) g.feel.killCam(s.group.position, { style: 'orbit', size: 40, dur: 1.4, text: 'THE SKYFLEET FALLS' })
     const crash = (p: THREE.Vector3, size: number) => {

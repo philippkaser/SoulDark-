@@ -95,11 +95,15 @@ export function killShot(style: KillCamStyle, hero: THREE.Vector3, target: THREE
         look.copy(target)
         return 52 - 6 * e
       }
-      // behind the hero, the target ahead; the lens pushes in
+      // over the hero's shoulder: aim between him and the target so both stay in frame, the lens as
+      // tight as that allows (a toppling spire on the horizon) or as wide as it must be (a station overhead)
       pos.copy(h).addScaledVector(flat, -(4.6 + 1.4 * e)).addScaledVector(side, 1.35)
       pos.y = h.y + 1.2 + 0.5 * e
-      look.copy(target)
-      return 58 + (tele - 58) * smoothstep(0.1, 0.9, e)
+      _f.subVectors(target, pos).normalize()
+      _s.set(h.x, h.y + 1.1, h.z).sub(pos).normalize()
+      const gap = (_f.angleTo(_s) * 180) / Math.PI
+      look.copy(pos).addScaledVector(_v.copy(_f).multiplyScalar(0.68).addScaledVector(_s, 0.32).normalize(), 60)
+      return clamp(gap * 1.3 + 14, 32, 80) * (1 - 0.08 * e)
     },
   }
 }
