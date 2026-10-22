@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { ParticlePool } from '../../engine/particles'
-import { clamp } from '../../engine/math'
+import { clamp, smoothstep } from '../../engine/math'
 import { audio } from '../../audio/audio'
 import type { PostState } from '../post'
 import type { ScorchMap } from '../world/scorch'
@@ -32,6 +32,7 @@ export interface GroundSampler {
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
 const _v = new THREE.Vector3()
 const _p = new THREE.Vector3()
+const _w = new THREE.Vector3()
 const _c = new THREE.Color()
 const UP = new THREE.Vector3(0, 1, 0)
 
@@ -129,7 +130,7 @@ export class Fx {
     this.root.add(this.glow.object, this.smoke.object, this.fire.object, this.debris.mesh, this.ghosts.root, this.gpu.root)
     this.rings = pool(28, () => new THREE.Mesh(new THREE.PlaneGeometry(2, 2), ringMaterial()), this.root)
     this.flares = pool(24, () => new THREE.Mesh(new THREE.PlaneGeometry(2, 2), flareMaterial()), this.root)
-    this.fireballs = pool(14, () => new THREE.Mesh(new THREE.IcosahedronGeometry(1, 4), fireballMaterial()), this.root)
+    this.fireballs = pool(40, () => new THREE.Mesh(new THREE.IcosahedronGeometry(1, 4), fireballMaterial()), this.root)
     this.bubbles = pool(10, () => new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), bubbleMaterial()), this.root)
     this.streaks = pool(90, () => new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 1).translate(0, 0.5, 0), streakMaterial()), this.root)
     for (const r of this.rings) r.mesh.renderOrder = 9
@@ -364,7 +365,14 @@ export class Fx {
     const ground = p.y - gy < s * 1.2
     this.light(_p.copy(p).setY(p.y + s * 0.5), opts.color ?? '#ff9a48', 40 * s * s, s * 14, 4)
     this.flare(p, s * 5, '#ffd8a0', 0.3)
-    this.fireball(p, s, 0.7 + s * 0.05, s * 0.6)
+    // a billowing fireball: lobes boiling up and out of the blast around a white-hot heart
+    const lobes = s >= 2 ? Math.min(6, 3 + Math.floor(s / 4)) : 1
+    for (let i = 0; i < lobes; i++) {
+      randomDir(_v)
+      if (ground) _v.y = Math.abs(_v.y) * 0.8 + 0.2
+      const at = i === 0 ? p : _w.copy(p).addScaledVector(_v, s * rnd(0.45, 0.85))
+      this.fireball(at, s * (i === 0 ? 1 : rnd(0.5, 0.85)), 1.1 + s * 0.06 + rnd(0, 0.4), s * rnd(0.5, 1.1), i === 0 ? 1.5 : 1.25)
+    }
     this.explosionParticles(p, s, ground)
     const nf = Math.round((10 + s * 3) * this.host.quality)
     for (let i = 0; i < nf; i++) {
@@ -372,7 +380,7 @@ export class Fx {
       if (ground) _v.y = Math.abs(_v.y)
       this.fire.spawn(p, _v, [1, rnd(0.45, 0.7), 0.2], 0.9, s * rnd(0.5, 1.1), rnd(0.3, 0.7), -2, 3, { grow: 1.2 })
     }
-    this.smokeColumn(_p.copy(p), 6 + s, s * 1.1, s * 1.6, 1.2, 0.1)
+    this.smokeColumn(_p.copy(p), 10 + s * 1.5, s * 1.4, s * 2.2, 1.4, 0.05)
     if (ground) {
       this.ring(_p.copy(p).setY(gy + 0.1), s * 3.2, '#ffb070', 0.5 + s * 0.02, { thick: 0.18 })
       this.dust(_p.copy(p).setY(gy + 0.3), 6 + s, s * 1.2, s * 1.2)
@@ -569,12 +577,14 @@ export class Fx {
       if (!f.active) continue
       f.t += dt
       const k = Math.min(1, f.t / f.dur)
-      const grow = 1 - Math.pow(1 - Math.min(1, k * 4), 3)
-      f.mesh.scale.setScalar(f.r1 * (0.25 + 0.75 * grow) * (1 + k * 0.35))
-      f.mesh.position.y += f.rise * dt * (1 - k)
+      // bursts out, then keeps swelling slowly as it boils upward; white-hot, orange, then smoke
+      const grow = 1 - Math.pow(1 - Math.min(1, k * 5), 3)
+      f.mesh.scale.setScalar(f.r1 * (0.2 + 0.8 * grow) * (1 + k * 0.6))
+      f.mesh.position.y += f.rise * dt * (1 - k * 0.5)
       f.mat.uniforms.uTime.value += dt
-      f.mat.uniforms.uHeat.value = f.heat0 * Math.pow(1 - k, 1.6)
-      f.mat.uniforms.uAlpha.value = 1 - Math.pow(k, 3)
+      f.mat.uniforms.uHeat.value = f.heat0 * Math.pow(1 - smoothstep(0.08, 0.9, k), 1.2)
+      // the cooled ball hands over to the smoke column rather than hanging as a dark shell
+      f.mat.uniforms.uAlpha.value = 1 - smoothstep(0.4, 0.9, k)
       if (k >= 1) (f.active = false), (f.mesh.visible = false)
     }
     for (const b of this.bubbles) {

@@ -148,7 +148,8 @@ export class Debris {
         this.heat[i] = Math.max(0, this.heat[i] - dt * 0.6)
         const h = this.heat[i]
         const g = this.shade[i]
-        this.mesh.setColorAt(i, _c.setRGB(g + h * 2.6, g + h * 1.4, g + h * 0.5))
+        // basalt underneath the glow, so cooling rock never passes through grey (lilac under the eclipse fill)
+        this.mesh.setColorAt(i, _c.setRGB(g + h * 2.6, g * 0.7 + h * 1.4, g * 0.52 + h * 0.5))
         colorDirty = true
       } else if (this.shade[i] >= 0) {
         const g = this.shade[i]

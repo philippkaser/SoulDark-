@@ -99,6 +99,8 @@ export class Player {
   perfectCount = 0
   /** Height the meteor dive started from (the slam crater grows with the fall). */
   private diveFrom = 0
+  /** Until the next parry counter-crescent may fly. */
+  private counterT = 0
 
   constructor(game: Game) {
     this.game = game
@@ -231,6 +233,13 @@ export class Player {
     g.score.parry(n)
     this.gainDivinity(6 + n * 8)
     this.perfectCount++
+    // the blade answers: a crescent rolls back down the line the threat came in on, and a big parry cuts everything near
+    if (n >= 1 && this.counterT <= 0) {
+      this.counterT = 0.25
+      const roll = (Math.random() - 0.5) * 0.5 + (Math.random() < 0.5 ? 0 : Math.PI / 2)
+      g.slashes.fire(hitP.clone().addScaledVector(toward, 1.5), toward, { width: 10 + n * 6, roll, dmg: 900 + n * 600, speed: 220, life: 2.4, power: 40, color: '#ffd080' })
+    }
+    if (n >= 2) this.arts.counter()
     // the hero snaps to face the threat and flicks the blade
     this.yaw = Math.atan2(toward.x, toward.z)
     this.t = 0.04
@@ -309,6 +318,7 @@ export class Player {
     this.parryT += dt
     this.parryLag -= dt
     this.dashCd -= dt
+    this.counterT -= dt
     this.invuln -= dt
     this.lastHurt += dt
     if (this.lastHurt > 3 && this.alive && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + 45 * dt)
@@ -607,14 +617,14 @@ export class Player {
     const launch = origin.clone().addScaledVector(dir, 1.2)
     const rolls = [0, 0.12, Math.PI - 0.12, -0.75, 0]
     if (n === 4) {
-      for (const r of [0.85, -0.85]) g.slashes.fire(launch, dir, { width: 11, roll: Math.PI / 2 + r, dmg: 520, speed: 90, power: 40, color: '#ffc060' })
+      for (const r of [0.85, -0.85]) g.slashes.fire(launch, dir, { width: 15, roll: Math.PI / 2 + r, dmg: 900, speed: 170, life: 2.4, power: 40, color: '#ffc060' })
       g.post.impactFrames([2, 0])
       g.cam.addTrauma(0.35)
       g.time.freeze(0.06)
       g.fx.afterimage('#ffd080', 0.4)
       audio.slash(2)
     } else {
-      g.slashes.fire(launch, dir, { width: 6.5, roll: rolls[n], dmg: 240, color: '#ffb850' })
+      g.slashes.fire(launch, dir, { width: 8, roll: rolls[n], dmg: 320, speed: 150, life: 2, color: '#ffb850' })
       audio.slash(1)
     }
     audio.airSlash()
@@ -641,7 +651,7 @@ export class Player {
       { t: 'sphere', c: origin, r: 4 },
       { id: newHitId(), kind: 'slash', dmg: 160, power: 16, origin, friendly: true },
     )
-    g.slashes.fire(origin.clone().addScaledVector(dir, 1.2), dir, { width: 7, roll: 0.75, dmg: 240, color: '#ffb850' })
+    g.slashes.fire(origin.clone().addScaledVector(dir, 1.2), dir, { width: 8.5, roll: 0.75, dmg: 320, speed: 150, life: 2, color: '#ffb850' })
     audio.slash(1)
     audio.airSlash()
   }

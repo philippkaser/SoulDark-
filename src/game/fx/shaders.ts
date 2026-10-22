@@ -23,13 +23,17 @@ export function fireballMaterial() {
       uniform float uSeed;
       varying vec3 vN;
       varying vec3 vView;
+      varying vec3 vObj;
       varying float vNoise;
       ${NOISE3}
       void main() {
         vec3 p = position;
-        float n = fbm3(normal * 2.2 + vec3(0.0, -uTime * 0.9, uSeed));
-        vNoise = n;
-        p += normal * (n - 0.45) * 0.38;
+        vObj = normal;
+        // two octaves of boil: big billows and the curl inside them
+        float n = fbm3(normal * 1.7 + vec3(0.0, -uTime * 0.7, uSeed));
+        float n2 = fbm3(normal * 4.2 + vec3(uSeed, -uTime * 1.4, 0.0));
+        vNoise = n * 0.7 + n2 * 0.3;
+        p += normal * ((n - 0.45) * 0.55 + (n2 - 0.5) * 0.2);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         vView = normalize(-mv.xyz);
         vN = normalize(normalMatrix * normal);
@@ -39,17 +43,24 @@ export function fireballMaterial() {
       uniform float uHeat;
       uniform float uAlpha;
       uniform float uTime;
+      uniform float uSeed;
       varying vec3 vN;
       varying vec3 vView;
+      varying vec3 vObj;
       varying float vNoise;
+      ${NOISE3}
       void main() {
         float fres = clamp(dot(vN, vView), 0.0, 1.0);
-        float t = clamp(uHeat * (0.55 + vNoise * 0.9) * (0.5 + fres * 0.7), 0.0, 1.4);
-        vec3 smoke = vec3(0.09, 0.07, 0.065) * (0.6 + vNoise);
-        vec3 c = mix(smoke, vec3(1.4, 0.32, 0.05), smoothstep(0.08, 0.4, t));
-        c = mix(c, vec3(3.2, 1.6, 0.45), smoothstep(0.4, 0.8, t));
-        c = mix(c, vec3(6.0, 5.2, 4.2), smoothstep(0.8, 1.2, t));
-        float a = uAlpha * smoothstep(0.0, 0.35, fres) * (0.75 + 0.25 * vNoise);
+        // fine boil over the billows: soot crusting over, fire showing through the seams
+        float d = fbm3(vObj * 3.4 + vec3(0.0, -uTime * 1.1, uSeed * 1.7));
+        float body = vNoise * 0.55 + d * 0.65;
+        // hotter toward the heart of the ball and down in the folds of the boil
+        float t = clamp(uHeat * (0.15 + body) * (0.3 + fres * 0.95), 0.0, 1.6);
+        vec3 smoke = vec3(0.05, 0.04, 0.035) * (0.4 + d * 1.2);
+        vec3 c = mix(smoke, vec3(1.1, 0.18, 0.02), smoothstep(0.12, 0.38, t));
+        c = mix(c, vec3(4.2, 1.45, 0.25), smoothstep(0.38, 0.8, t));
+        c = mix(c, vec3(7.5, 5.6, 3.4), smoothstep(0.95, 1.4, t));
+        float a = uAlpha * smoothstep(0.0, 0.3, fres) * (0.85 + 0.15 * d);
         gl_FragColor = vec4(c, a);
       }`,
     transparent: true,

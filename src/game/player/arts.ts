@@ -24,6 +24,8 @@ export const IAI_MAX_TILT = 0.7
 /** The ring of light runs on past what the cut kills. */
 const IAI_VIS = 620
 const IAI_DMG = 6000
+/** A big parry's counter-cut reaches this far. */
+export const COUNTER_RANGE = 160
 /** Still holding the button this long into the Iai: the blade goes up instead of home, for the Worldsplitter. */
 export const HOLD_TO_CHARGE = 0.2
 export const WORLD_CHARGE = 1.3
@@ -98,6 +100,8 @@ export function lineOffset(a: THREE.Vector3, dir: THREE.Vector3, p: THREE.Vector
 interface Pending {
   /** Hero seconds until the sheathe. */
   t: number
+  /** Reach of the cut (m). */
+  r: number
   c: THREE.Vector3
   n: THREE.Vector3
   disc: number
@@ -127,6 +131,7 @@ export class SwordArts implements System {
   private pulseT = 0
   private arcT = 0
   private skyT = 0
+  private counterT = 0
   private pending: Pending[] = []
   /** The blade of light: its length, brightness, and the fade after it lands. */
   private bladeLen = 0
@@ -176,7 +181,7 @@ export class SwordArts implements System {
       if (_b.length() < IAI_RANGE + MOON_R && headingGap(_b, aim) < MOON_ASSIST) discNormal(_b.normalize(), n, 1, 0, 1.3)
     }
     const disc = this.fx.disc(c, n, IAI_VIS, 0.16, 0.6, 1.4)
-    this.pending.push({ t: IAI_SHEATHE - IAI_DRAW, c, n, disc })
+    this.pending.push({ t: IAI_SHEATHE - IAI_DRAW, r: IAI_RANGE, c, n, disc })
     this.cd = IAI_CD
     // the steel flashes once across the front, a ring of pressure in the plane of the cut
     const fwd = _w.set(aim.x, 0, aim.z)
@@ -219,7 +224,7 @@ export class SwordArts implements System {
   private sheathe(s: Pending) {
     const g = this.g
     const fx = g.fx
-    const shape: Shape = { t: 'disc', c: s.c, n: s.n, r: IAI_RANGE, h: IAI_HALF }
+    const shape: Shape = { t: 'disc', c: s.c, n: s.n, r: s.r, h: IAI_HALF }
     // the cut lines show on everything caught in the plane before it falls
     const pts = g.enemyPoints
     const order: number[] = []
@@ -260,6 +265,17 @@ export class SwordArts implements System {
     }
     audio.sheathe(0)
     g.score.feat('iai', clamp(n / 30, 0, 1))
+  }
+
+  /** A big perfect parry answers on its own: a level ring of steel through everything near, at most once a second. */
+  counter() {
+    if (this.counterT > 0) return
+    this.counterT = 1
+    const c = this.g.player.chestPos(new THREE.Vector3())
+    const n = new THREE.Vector3(0, 1, 0)
+    const disc = this.fx.disc(c, n, COUNTER_RANGE * 1.6, 0.12, 0.45, 0.4)
+    this.pending.push({ t: 0.16, r: COUNTER_RANGE, c, n, disc })
+    this.fx.ring(c, n, 1, 40, 0.3, { thick: 0.05, alpha: 0.8, color: '#ffe8c8' })
   }
 
   // -------------------------------------------------------------------------
@@ -602,6 +618,7 @@ export class SwordArts implements System {
   /** Every hero frame: cooldowns, the pending sheathe, and letting any input cut the release cinematic short. */
   tick(dt: number, f: InputFrame, enabled: boolean) {
     this.cd -= dt
+    this.counterT -= dt
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const s = this.pending[i]
       s.t -= dt
@@ -645,6 +662,7 @@ export class SwordArts implements System {
   reset() {
     this.cancel()
     this.cd = 0
+    this.counterT = 0
     this.charge = 0
     this.full = false
     this.pending.length = 0

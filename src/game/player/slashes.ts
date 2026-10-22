@@ -164,7 +164,8 @@ export class Slashes {
         this.orient(c)
       }
       const age = 1 - c.life / c.maxLife
-      const w = c.width * (1 + age * 0.6)
+      // the crescent swells as it flies: a sword stroke becoming a wave of light
+      const w = c.width * (1 + age * 1.5)
       c.mesh.position.copy(c.pos)
       c.mesh.scale.setScalar(w)
       c.mat.uniforms.uAlpha.value = Math.min(1, c.life / (c.maxLife * 0.35)) * Math.min(1, age * 12 + 0.3)
