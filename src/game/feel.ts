@@ -49,9 +49,11 @@ export type KillCamStyle = 'low' | 'orbit' | 'behind' | 'crane'
 
 /**
  * A kill cam shot. `hero` is copied; `target` is read live (a falling ship
- * keeps its frame). 'low': down by the hero's boots looking up past him at
- * the kill, drifting round. 'orbit': a slow arc around the target. 'behind':
- * over the hero's shoulder toward the target, the lens narrowing on far kills.
+ * keeps its frame). 'low': knee height off the hero's side, looking up past
+ * him at the kill. 'orbit': a slow arc around the target. 'behind': over the
+ * hero's shoulder, framing him and the target, the lens as tight as both
+ * allow. 'crane': rising behind the hero over a kill down the line (a cut
+ * colossus falling apart).
  */
 export function killShot(style: KillCamStyle, hero: THREE.Vector3, target: THREE.Vector3, size: number, dur: number): Shot {
   const h = hero.clone()
