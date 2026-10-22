@@ -96,8 +96,10 @@ export type Shape =
   | { t: 'slab'; a: THREE.Vector3; b: THREE.Vector3; r: number; h: number }
   /** A horizontal band between radii r0..r1 around c, up to height h (expanding shockwaves). */
   | { t: 'ring'; c: THREE.Vector3; r0: number; r1: number; h: number }
-  /** The slice d0..d1 (along the axis) of a cone from `c` along unit `dir`, radius r0 + d · tan (the Serious Punch's front). */
+  /** The slice d0..d1 (along the axis) of a cone from `c` along unit `dir`, radius r0 + d · tan (a widening blast front). */
   | { t: 'cone'; c: THREE.Vector3; dir: THREE.Vector3; tan: number; r0: number; d0: number; d1: number }
+  /** A flat disc around `c` facing unit `n`, radius r, half-thickness h (the Iai's cut through everything around). */
+  | { t: 'disc'; c: THREE.Vector3; n: THREE.Vector3; r: number; h: number }
 
 /** Does the shape touch a sphere at (x, y, z) with radius r? */
 export function shapeHitsSphere(s: Shape, x: number, y: number, z: number, r: number): boolean {
@@ -142,6 +144,15 @@ export function shapeHitsSphere(s: Shape, x: number, y: number, z: number, r: nu
       const lim = s.r0 + Math.max(0, along) * s.tan + r * Math.sqrt(1 + s.tan * s.tan)
       return perp2 <= lim * lim
     }
+    case 'disc': {
+      const dx = x - s.c.x
+      const dy = y - s.c.y
+      const dz = z - s.c.z
+      const off = dx * s.n.x + dy * s.n.y + dz * s.n.z
+      if (Math.abs(off) > s.h + r) return false
+      const rr = s.r + r
+      return dx * dx + dy * dy + dz * dz - off * off <= rr * rr
+    }
   }
 }
 
@@ -158,7 +169,8 @@ export function shapeHitsCapsule(s: Shape, a: THREE.Vector3, b: THREE.Vector3, r
     case 'sector':
     case 'slab':
     case 'ring':
-    case 'cone': {
+    case 'cone':
+    case 'disc': {
       // sample the capsule's axis
       for (let i = 0; i <= 6; i++) {
         _sa.lerpVectors(a, b, i / 6)
@@ -185,6 +197,10 @@ export function shapeContact(s: Shape, p: THREE.Vector3, out: THREE.Vector3) {
       const len2 = _sb.lengthSq() || 1e-9
       const t = Math.max(0, Math.min(1, _sa.subVectors(p, s.a).setY(0).dot(_sb) / len2))
       return out.copy(s.a).addScaledVector(_sb, t).setY(Math.min(p.y, s.h))
+    }
+    case 'disc': {
+      _sa.subVectors(p, s.c)
+      return out.copy(p).addScaledVector(s.n, -_sa.dot(s.n))
     }
     case 'sector':
     case 'ring':
@@ -214,5 +230,7 @@ export function shapeBounds(s: Shape): [number, number, number, number] {
       const bz = s.c.z + s.dir.z * s.d1
       return [Math.min(ax, bx) - rr, Math.min(az, bz) - rr, Math.max(ax, bx) + rr, Math.max(az, bz) + rr]
     }
+    case 'disc':
+      return [s.c.x - s.r, s.c.z - s.r, s.c.x + s.r, s.c.z + s.r]
   }
 }

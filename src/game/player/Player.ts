@@ -10,7 +10,7 @@ import { ARENA_HARD, ARENA_R } from '../world/layout'
 import { HIT_AT } from './heroClips'
 import { buildHero, type HeroModel } from './heroModel'
 import { HeroPower } from './power'
-import { HOLD_TO_CHARGE, JAB_CD, JAB_HIT, Punch, SERIOUS_HIT } from './punch'
+import { HOLD_TO_CHARGE, IAI_DRAW, IAI_DUR, IAI_SHEATHE, SwordArts, WORLD_DUR, WORLD_HIT } from './arts'
 
 export type PState =
   | 'free'
@@ -27,9 +27,9 @@ export type PState =
   | 'land'
   | 'hurt'
   | 'judgment'
-  | 'punch'
-  | 'scharge'
-  | 'spunch'
+  | 'iai'
+  | 'wcharge'
+  | 'wsplit'
   | 'cine'
   | 'dead'
   | 'victory'
@@ -54,8 +54,8 @@ export class Player {
   readonly avatar: Avatar
   /** Aura, levitating rocks, cracks and lightning answering the hero's big moments. */
   readonly power: HeroPower
-  /** The fist: jabs, the Serious Punch's coil and its pressure wave. */
-  readonly punch: Punch
+  /** The sword arts: the Iai's cut through everything around, the Worldsplitter's blade of light. */
+  readonly arts: SwordArts
   readonly pos = new THREE.Vector3()
   readonly vel = new THREE.Vector3()
   yaw = Math.PI
@@ -105,7 +105,7 @@ export class Player {
     this.model = buildHero()
     this.avatar = new Avatar(this.model)
     this.power = new HeroPower(game)
-    this.punch = new Punch(game)
+    this.arts = new SwordArts(game)
   }
 
   reset(x = 0, z = 0, yaw = Math.PI) {
@@ -131,8 +131,8 @@ export class Player {
     this.avatar.resetCloth()
     this.perfectCount = 0
     this.power.reset()
-    this.punch.cancel()
-    this.punch.cd = 0
+    this.arts.cancel()
+    this.arts.cd = 0
   }
 
   get alive() {
@@ -270,14 +270,14 @@ export class Player {
       return
     }
     // the coil and the follow-through do not flinch
-    if (dmg >= 90 && this.state !== 'charge' && this.state !== 'scharge' && this.state !== 'spunch') this.enter('hurt')
+    if (dmg >= 90 && this.state !== 'charge' && this.state !== 'wcharge' && this.state !== 'wsplit') this.enter('hurt')
   }
 
   die() {
     this.state = 'dead'
     this.t = 0
     this.stopCharge()
-    this.punch.cancel()
+    this.arts.cancel()
     this.game.onPlayerDeath()
   }
 
@@ -291,7 +291,7 @@ export class Player {
 
   private enter(s: PState) {
     if (this.state === 'charge' && s !== 'cleave') this.stopCharge()
-    if (this.state === 'scharge' && s !== 'spunch') this.punch.cancel()
+    if (this.state === 'wcharge' && s !== 'wsplit') this.arts.cancel()
     this.state = s
     this.t = 0
     this.fired = false
@@ -333,9 +333,9 @@ export class Player {
 
     // ---- universal cancels: the hero is never stuck
     const cancellable =
-      s === 'free' || s === 'air' || s === 'guard' || s === 'land' || ((s === 'slash' || s === 'airslash' || s === 'punch') && this.fired) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12) || (s === 'spunch' && this.t > 0.6)
-    this.punch.tick(dt, f, enabled)
-    if (cancellable || s === 'charge' || s === 'catch' || s === 'scharge') {
+      s === 'free' || s === 'air' || s === 'guard' || s === 'land' || ((s === 'slash' || s === 'airslash') && this.fired) || (s === 'iai' && this.fired && this.t > 0.16) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12) || (s === 'wsplit' && this.t > 0.9)
+    this.arts.tick(dt, f, enabled)
+    if (cancellable || s === 'charge' || s === 'catch' || s === 'wcharge') {
       if (want(f.parry) && this.parryLag <= 0) return this.startParry()
       if (want(f.dash) && this.dashCd <= 0) return this.startDash(mx, mz)
     }
@@ -343,7 +343,7 @@ export class Player {
       if (g.onUltimate?.()) return
       if (this.divinity >= 100) return this.startJudgment()
     }
-    if (cancellable && want(f.punch) && this.punch.ready) return this.startJab()
+    if (cancellable && want(f.art) && this.arts.ready) return this.startIai()
 
     switch (this.state) {
       case 'free':
@@ -443,30 +443,39 @@ export class Player {
       case 'judgment':
         this.updateJudgment(dt)
         break
-      case 'punch': {
-        this.locomote(dt, 0, 0, 0, 0, !this.grounded)
-        this.yaw = turnToward(this.yaw, this.aimYaw, 30 * dt)
-        if (!this.fired && this.t >= JAB_HIT) {
-          this.fired = true
-          this.punch.jab()
+      case 'iai': {
+        if (this.grounded) this.locomote(dt, 0, 0, 0, 0)
+        else {
+          // the draw holds him in the air
+          this.vel.y = Math.max(this.vel.y - GRAVITY * 0.2 * dt, -2)
+          this.integrate(dt)
         }
-        // still holding after the jab: coil for the Serious Punch
-        if (this.fired && enabled && f.punchHeld && this.t >= HOLD_TO_CHARGE) this.startSeriousCharge()
-        else if (want(f.slash) && this.fired) this.startSlash(1)
+        if (this.t < IAI_DRAW) this.yaw = turnToward(this.yaw, this.aimYaw, 40 * dt)
+        if (!this.fired && this.t >= IAI_DRAW) {
+          this.fired = true
+          this.arts.iai()
+        }
+        // still holding after the draw: the blade goes up for the Worldsplitter
+        if (this.fired && enabled && f.artHeld && this.t >= HOLD_TO_CHARGE) this.startWorldCharge()
+        else if (want(f.slash) && this.t > IAI_SHEATHE) this.startSlash(1)
         else if (want(f.jump) && this.fired && this.grounded) this.leap()
-        else if (this.t >= 0.34) this.enter(this.grounded ? 'free' : 'air')
+        else if (this.t >= IAI_DUR) this.enter(this.grounded ? 'free' : 'air')
         break
       }
-      case 'scharge':
-        this.updateSeriousCharge(dt, f, enabled)
+      case 'wcharge':
+        this.updateWorldCharge(dt, f, enabled)
         break
-      case 'spunch':
-        this.locomote(dt, 0, 0, 0, 0, !this.grounded)
-        if (!this.fired && this.t >= SERIOUS_HIT) {
-          this.fired = true
-          this.punch.serious()
+      case 'wsplit':
+        if (this.grounded) this.locomote(dt, 0, 0, 0, 0)
+        else {
+          this.vel.y = Math.max(this.vel.y - GRAVITY * 0.15 * dt, -1)
+          this.integrate(dt)
         }
-        if (this.t >= 1) this.enter(this.grounded ? 'free' : 'air')
+        if (!this.fired && this.t >= WORLD_HIT) {
+          this.fired = true
+          this.arts.strike()
+        }
+        if (this.t >= WORLD_DUR) this.enter(this.grounded ? 'free' : 'air')
         break
       case 'dead':
         this.vel.multiplyScalar(Math.exp(-dt * 6))
@@ -479,6 +488,7 @@ export class Player {
     if (this.state !== 'parry') this.parriedTier = -1
     this.constrain()
     this.animate(dt)
+    this.arts.place(dt)
     this.power.update(dt)
   }
 
@@ -721,50 +731,45 @@ export class Player {
     this.charge = 0
   }
 
-  /** A jab with a short lunge down the aim. */
-  private startJab() {
+  /** The Iai: planted, the hand on the hilt, turned to the aim. */
+  private startIai() {
     this.stopCharge()
     this.model.energyBlade.visible = false
-    this.enter('punch')
+    this.enter('iai')
     this.yaw = this.aimYaw
-    this.punch.cd = JAB_CD
-    const fx = Math.sin(this.aimYaw)
-    const fz = Math.cos(this.aimYaw)
-    const lunge = this.grounded ? 15 : 9
-    this.vel.x = fx * lunge
-    this.vel.z = fz * lunge
-    if (!this.grounded) this.vel.y = Math.max(this.vel.y, 2)
+    this.vel.x *= 0.15
+    this.vel.z *= 0.15
+    if (!this.grounded) this.vel.y = Math.max(this.vel.y, 1)
   }
 
-  private startSeriousCharge() {
-    this.enter('scharge')
-    this.punch.beginCharge()
+  private startWorldCharge() {
+    this.enter('wcharge')
+    this.arts.beginCharge()
     this.vel.x *= 0.2
     this.vel.z *= 0.2
   }
 
-  private updateSeriousCharge(dt: number, f: InputFrame, enabled: boolean) {
+  private updateWorldCharge(dt: number, f: InputFrame, enabled: boolean) {
     if (this.grounded) this.locomote(dt, 0, 0, 0, 0)
     else {
-      // hang in the air while coiling
+      // hang in the air with the blade raised
       this.vel.y = Math.max(this.vel.y - GRAVITY * 0.15 * dt, -1)
       this.vel.x *= Math.exp(-dt * 4)
       this.vel.z *= Math.exp(-dt * 4)
       this.integrate(dt)
     }
     this.yaw = turnToward(this.yaw, this.aimYaw, 8 * dt)
-    this.punch.chargeTick(dt)
-    if (enabled && f.punchHeld) return
-    if (this.punch.canRelease) {
+    this.arts.chargeTick(dt)
+    if (enabled && f.artHeld) return
+    if (this.arts.canRelease) {
       this.yaw = this.aimYaw
-      this.enter('spunch')
+      this.enter('wsplit')
+      this.arts.worldsplit()
       return
     }
-    // released early, or without the Divinity to pay for it: just a punch
-    const k = this.punch.charge
-    this.punch.cancel()
-    if (k > 0.2) this.startJab()
-    else this.enter(this.grounded ? 'free' : 'air')
+    // let go early, or without the Divinity to pay for it: the blade comes down harmlessly
+    this.arts.cancel()
+    this.enter(this.grounded ? 'free' : 'air')
   }
 
   private startDive() {
@@ -965,12 +970,12 @@ export class Player {
         return 'hurt'
       case 'judgment':
         return this.t < 1.68 ? 'iai' : 'sheathe'
-      case 'punch':
-        return 'jab'
-      case 'scharge':
-        return 'seriousCharge'
-      case 'spunch':
-        return 'seriousRelease'
+      case 'iai':
+        return 'iaiDraw'
+      case 'wcharge':
+        return 'charge'
+      case 'wsplit':
+        return 'worldsplit'
       case 'dead':
         return 'death'
       case 'victory':
@@ -989,7 +994,7 @@ export class Player {
     this.speed += (hs - this.speed) * damp(12, dt)
     if (hs > 0.3) this.moveAngle = wrapAngle(Math.atan2(this.vel.x, this.vel.z) - this.yaw)
     const clip = this.clip()
-    const free = clip === null || this.state === 'guard' || this.state === 'charge'
+    const free = clip === null || this.state === 'guard' || this.state === 'charge' || this.state === 'wcharge'
     const wind = g.wind
     this.avatar.update(dt, {
       x: this.pos.x,
@@ -1002,8 +1007,8 @@ export class Player {
       action: clip,
       actionT: this.state === 'judgment' && this.t >= 1.68 ? this.t - 1.68 : this.state === 'cine' ? this.cineT : this.t,
       time: g.time.real,
-      trail: this.state === 'slash' || this.state === 'airslash' || this.state === 'cleave' || this.state === 'parry',
-      sharpness: this.state === 'slash' || this.state === 'parry' || this.state === 'cleave' ? 45 : 30,
+      trail: this.state === 'slash' || this.state === 'airslash' || this.state === 'cleave' || this.state === 'parry' || this.state === 'iai' || this.state === 'wsplit',
+      sharpness: this.state === 'slash' || this.state === 'parry' || this.state === 'cleave' || this.state === 'iai' || this.state === 'wsplit' ? 45 : 30,
       windX: wind.x - this.vel.x * 0.6,
       windZ: wind.z - this.vel.z * 0.6,
       clothDt: dt,

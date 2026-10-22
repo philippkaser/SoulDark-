@@ -15,6 +15,7 @@ type Act = 'walk' | 'slam' | 'sweep' | 'stomp' | 'stagger' | 'roar' | 'death'
 const MAX_HP = 14000
 const _v = new THREE.Vector3()
 const _w = new THREE.Vector3()
+const _u = new THREE.Vector3()
 const _a = new THREE.Vector3()
 const _b = new THREE.Vector3()
 
@@ -212,14 +213,17 @@ export class Titans implements System {
     g.player.gainDivinity(30)
     audio.roar(_v.set(t.x, 20, t.z), 0.55)
     audio.musicSting('big')
-    // a punch tears straight through: split down the line it travelled
-    const punched = hit?.kind === 'punch'
-    useUI.getState().stamp(punched ? 'COLOSSUS, PUNCHED THROUGH' : 'COLOSSUS CLEAVED', 'divine')
+    // the Iai takes him across the middle: the top half slides off the bottom
+    const iai = hit?.kind === 'iai'
+    useUI.getState().stamp(iai ? 'COLOSSUS, CUT IN TWO' : 'COLOSSUS CLEAVED', 'divine')
     g.time.slowmo(1.6, 0.35)
-    // the punch has already lit the screen up: no second wash of white
-    g.post.flashTo(punched ? 0.1 : 0.4, '#fff0d0', 2)
-    g.post.impactFrames(punched ? [2, 0] : [2, 1, 2, 0], 1 / 16)
-    const plane = punched && hit?.dir ? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(hit.dir.z, 0.12, -hit.dir.x).normalize(), _v.set(t.x, 18, t.z)) : hit?.plane ?? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(Math.cos(t.yaw), 0.15, -Math.sin(t.yaw)).normalize(), _v.set(t.x, 18, t.z))
+    // the Iai has already lit the screen up: no second wash of white
+    g.post.flashTo(iai ? 0.1 : 0.4, '#fff0d0', 2)
+    g.post.impactFrames(iai ? [2, 0] : [2, 1, 2, 0], 1 / 16)
+    const plane =
+      iai && hit?.plane
+        ? new THREE.Plane().setFromNormalAndCoplanarPoint(_w.copy(hit.plane.normal).add(_u.set(Math.cos(t.yaw), 0, -Math.sin(t.yaw)).multiplyScalar(0.18)).normalize(), _v.set(t.x, 17, t.z))
+        : hit?.plane ?? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(Math.cos(t.yaw), 0.15, -Math.sin(t.yaw)).normalize(), _v.set(t.x, 18, t.z))
     // freeze the pose into stone and cut it apart
     t.model.rig.root.updateMatrixWorld(true)
     const baked: THREE.Mesh[] = t.model.meshes.map((m) => {

@@ -55,6 +55,7 @@ const _c = new THREE.Vector3()
 const _s = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 const _p = new THREE.Vector3()
+const _d = new THREE.Vector3()
 
 /**
  * Cuts objects in two along a plane. Each half is a set of clones of the
@@ -93,8 +94,20 @@ export class Slicer {
       // approximate centre of this half
       const hc = _c.clone().addScaledVector(n, (sign * size) / 4)
       const low = _box.min.y
-      const hinge = !!opts.topple && !horizontalCut
-      const pivotP = hinge ? new THREE.Vector3(hc.x, low, hc.z).addScaledVector(n, sign * _s.length() * 0.08) : hc
+      const isLower = horizontalCut && (sign > 0 ? n.y < 0 : n.y > 0)
+      // the top of something cut across slides off its stump and goes over like a felled tree
+      const slideTop = !!opts.topple && horizontalCut && !isLower
+      const hinge = !!opts.topple && (!horizontalCut || slideTop)
+      if (slideTop) {
+        _d.set(opts.vel?.x ?? 0, 0, opts.vel?.z ?? 0)
+        if (_d.lengthSq() < 1e-4) _d.set(Math.random() - 0.5, 0, Math.random() - 0.5)
+        _d.normalize()
+      }
+      const pivotP = slideTop
+        ? plane.projectPoint(hc, new THREE.Vector3()).addScaledVector(_d, (_s.x + _s.z) * 0.22)
+        : hinge
+          ? new THREE.Vector3(hc.x, low, hc.z).addScaledVector(n, sign * _s.length() * 0.08)
+          : hc
       const pivot = new THREE.Group()
       pivot.position.copy(pivotP)
       const inner = new THREE.Group()
@@ -129,16 +142,18 @@ export class Slicer {
         })
       }
       // which way does this half go?
-      const isLower = horizontalCut && (sign > 0 ? n.y < 0 : n.y > 0)
       const fixed = !!opts.staticBelow && isLower
       const vel = (opts.vel?.clone() ?? new THREE.Vector3()).addScaledVector(n, sign * (opts.separate ?? 1.5))
-      if (horizontalCut && !isLower) {
+      if (slideTop) vel.set(0, 0, 0).addScaledVector(_d, 2 + Math.random() * 2)
+      else if (horizontalCut && !isLower) {
         // the top slides off down the cut's slope
         const slope = UP.clone().multiplyScalar(-1).projectOnPlane(n)
         vel.addScaledVector(slope, 3)
       }
-      const axis = hinge
-        ? new THREE.Vector3().crossVectors(UP, n).multiplyScalar(sign).normalize()
+      const axis = slideTop
+        ? new THREE.Vector3().crossVectors(UP, _d).normalize()
+        : hinge
+          ? new THREE.Vector3().crossVectors(UP, n).multiplyScalar(sign).normalize()
         : new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize()
       const rate = hinge ? 0.15 : (opts.spin ?? 0.6) * (0.5 + Math.random())
       this.root.add(pivot)

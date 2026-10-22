@@ -206,13 +206,14 @@ export class Score {
     if (tier >= 1) this.log(['', 'Parry', 'PERFECT PARRY', 'DIVINE PARRY'][tier], pts, tier >= 2)
   }
 
-  feat(kind: 'heaven' | 'slam' | 'judgment' | 'catch' | 'punch' | 'serious' | 'flash', k: number) {
-    const base = { heaven: 300, slam: 100, judgment: 2000, catch: 800, punch: 60, serious: 2500, flash: 400 }[kind]
+  feat(kind: 'heaven' | 'slam' | 'judgment' | 'catch' | 'iai' | 'worldsplit' | 'flash', k: number) {
+    const base = { heaven: 300, slam: 100, judgment: 2000, catch: 800, iai: 120, worldsplit: 2500, flash: 400 }[kind]
     const pts = Math.round(base * (0.5 + k) * this.mult)
     this.points += pts
-    this.addStyle(kind === 'judgment' || kind === 'serious' ? 250 : kind === 'heaven' ? 40 + k * 60 : kind === 'punch' ? 12 : kind === 'flash' ? 45 : 25)
+    this.addStyle(kind === 'judgment' || kind === 'worldsplit' ? 250 : kind === 'heaven' ? 40 + k * 60 : kind === 'iai' ? 15 + k * 45 : kind === 'flash' ? 45 : 25)
     if (kind === 'judgment') this.log('JUDGMENT', pts, true)
-    if (kind === 'serious') this.log('SERIOUS PUNCH', pts, true)
+    if (kind === 'worldsplit') this.log('WORLDSPLITTER', pts, true)
+    if (kind === 'iai' && k >= 0.6) this.log('World Cut', pts)
     if (kind === 'flash') this.log('Flash step', pts)
   }
 

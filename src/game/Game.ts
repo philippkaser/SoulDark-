@@ -318,6 +318,11 @@ export class Game {
   /** Real seconds since the game began, for the ground's slow lava pulse. */
   private groundClock = 0
 
+  /** Where the enemies stand this frame (soldiers, giants, machines). */
+  get enemyPoints(): readonly THREE.Vector3[] {
+    return this.pointList
+  }
+
   /** Points for Judgment's cuts: enemies first, then the air around the hero. */
   judgmentPoint(i: number): THREE.Vector3 {
     const pts = this.pointList

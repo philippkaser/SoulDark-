@@ -451,19 +451,21 @@ class AudioEngine {
     for (let i = 0; i < 20; i++) this.burst(o, t + 0.1 + Math.random() * 1.6, 0.06, 'bandpass', rnd(800, 2600), 500, 0.18, 2)
   }
 
-  /** The jab: a crack of displaced air, a thump in the chest, the boom rolling off. */
-  punchJab() {
+  /** The Iai's draw: steel singing out of the scabbard, the air split flat across the front. */
+  iaiDraw() {
     if (!this.ctx) return
-    const o = this.out(undefined, 0.35)!
+    const o = this.out(undefined, 0.5)!
     const t = this.ctx.currentTime
-    this.burst(o, t, 0.03, 'highpass', 2500, 8000, 0.9, 0.8, 0.0005)
-    this.tone(o, 'sine', 150, 36, t, 0.18, 0.9, 0.002)
-    this.burst(o, t + 0.005, 0.28, 'bandpass', 2000, 280, 0.45, 1.2, 0.006)
-    this.burst(o, t + 0.02, 0.7, 'lowpass', 700, 50, 0.4, 0.7, 0.01)
+    this.wide(o, 0.25)
+    this.burst(o, t, 0.09, 'bandpass', 3500, 9000, 0.5, 4, 0.004)
+    this.ring(o, t + 0.01, 3100, [1, 1.41, 2.13, 2.9], 1.1, 0.07)
+    this.burst(o, t + 0.02, 0.025, 'highpass', 4000, 11000, 0.9, 0.8, 0.0005)
+    this.burst(o, t + 0.03, 0.5, 'bandpass', 2500, 300, 0.4, 1.5, 0.01)
+    this.tone(o, 'sine', 120, 40, t + 0.02, 0.3, 0.5, 0.002)
   }
 
-  /** The Serious Punch's coil: a rumble rising from the ground and a tightening whine, driven by charge 0..1. */
-  seriousCharge(): LoopHandle {
+  /** The Worldsplitter's charge: a rumble rising from the ground and a tightening whine, driven by charge 0..1. */
+  worldCharge(): LoopHandle {
     if (!this.ctx) return NOOP
     const ctx = this.ctx
     const t = ctx.currentTime
@@ -525,12 +527,24 @@ class AudioEngine {
     }
   }
 
-  /** The Serious Punch: the air cracks, a sub-bass boom, the line ripped open, thunder chasing the wave to the horizon. */
-  seriousPunch() {
+  /** The Worldsplitter coming down: a kilometre of light falling through the air. */
+  worldSwing() {
+    if (!this.ctx) return
+    const o = this.out(undefined, 0.8)!
+    const t = this.ctx.currentTime
+    this.wide(o, 0.5)
+    this.burst(o, t, 0.5, 'bandpass', 300, 1800, 0.6, 2, 0.25)
+    this.burst(o, t + 0.05, 0.45, 'lowpass', 400, 2400, 0.5, 0.8, 0.3)
+    this.tone(o, 'sawtooth', 55, 110, t, 0.4, 0.12, 0.3)
+  }
+
+  /** The Worldsplitter lands: the air cracks, the steel rings, a sub-bass boom, thunder chasing the cut to the horizon. */
+  worldSplit() {
     if (!this.ctx) return
     const o = this.out(undefined, 1.1)!
     const t = this.ctx.currentTime
     this.wide(o, 0.9)
+    this.ring(o, t, 900, [1, 1.52, 2.21, 3.1], 3, 0.1)
     this.burst(o, t, 0.05, 'highpass', 3000, 10000, 1, 0.8, 0.0005)
     this.tone(o, 'sine', 62, 18, t, 3.5, 1, 0.004)
     this.tone(o, 'sine', 38, 16, t + 0.03, 4.5, 0.8, 0.02)
@@ -578,13 +592,14 @@ class AudioEngine {
     this.ring(o, t, 1800 + (i % 7) * 140, [1, 1.47, 2.1], 0.4, 0.05)
   }
 
-  sheathe() {
+  /** The blade sliding home, and the click of the guard against the scabbard `delay` seconds later. */
+  sheathe(delay = 0.42) {
     if (!this.ctx) return
     const o = this.out(undefined, 0.8)!
     const t = this.ctx.currentTime
-    this.burst(o, t, 0.4, 'bandpass', 1200, 4000, 0.15, 3, 0.3)
-    this.ring(o, t + 0.42, 2600, [1, 1.33, 2.6], 0.5, 0.12)
-    this.burst(o, t + 0.42, 0.03, 'highpass', 3000, 8000, 0.6, 1, 0.001)
+    if (delay > 0.05) this.burst(o, t, delay - 0.02, 'bandpass', 1200, 4000, 0.15, 3, Math.min(0.3, delay * 0.7))
+    this.ring(o, t + delay, 2600, [1, 1.33, 2.6], 0.5, 0.12)
+    this.burst(o, t + delay, 0.03, 'highpass', 3000, 8000, 0.6, 1, 0.001)
   }
 
   // -------------------------------------------------------------------------

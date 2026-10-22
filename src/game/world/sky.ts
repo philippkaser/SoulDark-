@@ -71,7 +71,7 @@ void main() {
   float h = d.y;
   vec3 col = baseSky(d);
 
-  // the atmosphere split by a punch, worked out on the cloud plane: a straight
+  // the atmosphere split by the Worldsplitter, worked out on the cloud plane: a straight
   // canyon along uPartDir and a ring blasted out around the hero
   float pClear = 0.0;
   float pWall = 0.0;
@@ -142,7 +142,7 @@ void main() {
   float rays = fbm(vec2(theta * 6.0, uTime * 0.06)) * 0.7 + fbm(vec2(theta * 23.0, -uTime * 0.04)) * 0.5;
   vec3 corona = mix(vec3(1.0, 0.55, 0.18), vec3(1.0, 0.25, 0.08), uDoom);
   float c = 0.0;
-  // where the punch blew the smoke away the corona's haze goes with it: a crisp ring on clear sky
+  // where the split blew the smoke away the corona's haze goes with it: a crisp ring on clear sky
   if (x > 0.0) c = 7.0 * exp(-x * 110.0) + (1.6 * exp(-x * 20.0) * (0.6 + rays) + 0.4 * exp(-x * 4.0) * rays) * (1.0 - 0.55 * pClear);
   float rim = smoothstep(0.004, 0.0, abs(x)) * 12.0;
   vec3 ecl = corona * c + vec3(1.0, 0.85, 0.6) * rim;

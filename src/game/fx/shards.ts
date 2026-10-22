@@ -49,7 +49,7 @@ interface Shard {
 }
 
 /**
- * The moon punched to pieces: huge burning chunks flung outward that streak
+ * The moon cut to pieces: huge burning chunks flung outward that streak
  * fire, shrink as they burn up and either flare out in the sky or crash.
  * World clock.
  */
@@ -88,7 +88,7 @@ export class Shards {
       s.life = 7 + Math.random() * 4
       s.size = radius * (0.2 + Math.random() * 0.2)
       s.mesh.position.copy(at).addScaledVector(_v, radius * (0.3 + Math.random() * 0.35))
-      // outward from the centre, the whole spray carried on down the line of the punch
+      // outward from the centre, the whole spray carried on along the cut
       s.vel.copy(_v).multiplyScalar(45 + Math.random() * 70).addScaledVector(dir, 70 + Math.random() * 50).addScaledVector(vel, 0.3)
       s.vel.y += 10 + Math.random() * 25
       s.axis.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize()

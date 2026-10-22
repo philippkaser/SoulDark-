@@ -171,7 +171,7 @@ export class Feel {
     const g = this.g
     const st = g.player.state
     if (g.mode === 'title' || g.cam.cinematic || this.kc) return false
-    if (g.time.isStopped || st === 'cine' || st === 'dead' || st === 'victory' || st === 'judgment' || st === 'spunch') return false
+    if (g.time.isStopped || st === 'cine' || st === 'dead' || st === 'victory' || st === 'judgment' || st === 'wsplit') return false
     return g.time.real - this.lastKillCam > 5
   }
 
@@ -344,7 +344,7 @@ export class Feel {
       kc.t += rdt
       const mag = Math.hypot(f.moveX, f.moveY)
       if (mag < 0.3) kc.held = false
-      const any = f.slash || f.parry || f.dash || f.jump || f.punch || f.ult || f.menu || (mag > 0.3 && !kc.held) || Math.abs(f.lookX) + Math.abs(f.lookY) > 0.05
+      const any = f.slash || f.parry || f.dash || f.jump || f.art || f.ult || f.menu || (mag > 0.3 && !kc.held) || Math.abs(f.lookX) + Math.abs(f.lookY) > 0.05
       if (!live && kc.t > 0.1) this.endKillCam(false)
       else if (enabled && kc.t > 0.25 && any) this.endKillCam(true)
       else if (kc.t > kc.shot.dur + 0.1) this.endKillCam(false)

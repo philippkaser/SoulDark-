@@ -3,10 +3,10 @@
  *
  * Keyboard + mouse: WASD move, mouse aim, LMB slash, RMB parry (hold to guard),
  * Shift dash, Space leap (again in the air: meteor dive), E hold to charge the
- * Heaven Splitter, F punch (hold: Serious Punch), Q Judgment, Esc pause, 1-0
+ * Heaven Splitter, F Iai (hold: Worldsplitter), Q Judgment, Esc pause, 1-0
  * sandbox spawns.
  * Gamepad (standard): LS move, RS aim, RB / X slash, LB / LT parry, RT charge,
- * R3 punch, B dash, A leap, Y Judgment, Start pause.
+ * R3 Iai, B dash, A leap, Y Judgment, Start pause.
  */
 
 export interface InputFrame {
@@ -20,9 +20,9 @@ export interface InputFrame {
   dash: boolean
   jump: boolean
   heavy: boolean
-  /** Punch pressed this frame / held (the Serious Punch charges while held). */
-  punch: boolean
-  punchHeld: boolean
+  /** Sword art pressed this frame / held (a tap is the Iai, the Worldsplitter charges while held). */
+  art: boolean
+  artHeld: boolean
   ult: boolean
   menu: boolean
   /** Sandbox spawn hotkey 0-9, or -1. */
@@ -41,8 +41,8 @@ export const emptyFrame = (): InputFrame => ({
   dash: false,
   jump: false,
   heavy: false,
-  punch: false,
-  punchHeld: false,
+  art: false,
+  artHeld: false,
   ult: false,
   menu: false,
   spawn: -1,
@@ -233,8 +233,8 @@ class InputManager {
       f.dash = p.has('ShiftLeft') || p.has('ShiftRight') || p.has('KeyL')
       f.jump = p.has('Space')
       f.heavy = k.has('KeyE') || this.mouse[1]
-      f.punch = p.has('KeyF')
-      f.punchHeld = k.has('KeyF')
+      f.art = p.has('KeyF')
+      f.artHeld = k.has('KeyF')
       f.ult = p.has('KeyQ')
       const ms = 0.0024 * sensitivity
       f.lookX = this.mouseDX * ms
@@ -307,8 +307,8 @@ class InputManager {
     if (down(4) || down(6)) f.parry = true
     if (btn(4) || btn(6)) f.guard = true
     if (btn(7)) f.heavy = true
-    if (down(11)) f.punch = true
-    if (btn(11)) f.punchHeld = true
+    if (down(11)) f.art = true
+    if (btn(11)) f.artHeld = true
     if (down(1)) f.dash = true
     if (down(0)) f.jump = true
     if (down(3)) f.ult = true

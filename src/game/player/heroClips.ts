@@ -113,80 +113,80 @@ const tremble = (amp: number) => (out: Pose, t: number) => {
   out[S.rootY] += Math.sin(t * 38) * amp * 0.3
 }
 
-// the free (left) hand throws the punches; the sword hand trails low and out of the way
-const FIST_FWD: PoseSpec = { bladeL: [0, 0.05, 1], edgeL: [0, 1, 0] }
-const SWORD_BACK: PoseSpec = { handR: [-0.34, -0.22, -0.12], bladeR: [-0.35, -0.55, -1], edgeR: [0, 1, 0], poleR: [-0.8, -0.3, -0.3] }
+/** Blade raised overhead in both hands: the Heaven Splitter's and the Worldsplitter's charge. */
+const RAISED: PoseSpec = {
+  twoHand: 1,
+  handR: [-0.06, 0.56, 0.06],
+  bladeR: [0.04, 1, 0.06],
+  edgeR: [0, 0, 1],
+  poleR: [-0.85, 0.1, -0.2],
+  poleL: [0.85, 0.1, -0.2],
+  thighLX: -0.35,
+  thighLZ: 0.22,
+  kneeL: 0.5,
+  thighRX: 0.3,
+  thighRZ: -0.22,
+  kneeR: 0.45,
+  rootY: -0.1,
+  spineX: -0.06,
+  chestY: 0,
+  headX: -0.12,
+  lowerY: 0.2,
+}
 
-/** Left jab: a flick of the shoulder, the whole body in behind it. */
-const jab: ClipDef = {
-  dur: 0.34,
+/** Low, the hand on the hilt at the left hip, the blade still in its scabbard. */
+const IAI_SET: PoseSpec = {
+  rootY: -0.24,
+  spineX: 0.32,
+  chestY: -0.28,
+  headX: -0.12,
+  handR: [0.12, -0.18, 0.2],
+  bladeR: [-0.35, -0.12, -1],
+  edgeR: [0, 1, 0],
+  poleR: [-0.4, -0.6, -0.4],
+  handL: [0.2, -0.16, 0.12],
+  thighLX: -0.62,
+  kneeL: 0.92,
+  thighRX: 0.52,
+  kneeR: 0.44,
+  lowerY: 0.48,
+}
+
+/**
+ * The Iai: the hilt comes forward, the blade leaves the scabbard and crosses
+ * the whole front in one flat stroke, holds, and goes home with a click.
+ */
+const iaiDraw: ClipDef = {
+  dur: 0.62,
   keys: [
-    [0.03, { ...FIST_FWD, ...SWORD_BACK, handL: [0.24, 0.0, 0.02], poleL: [0.8, -0.5, -0.3], chestY: 0.2, spineX: 0.1, rootY: -0.06 }],
-    [0.06, { ...FIST_FWD, handL: [0.07, 0.15, 0.56], poleL: [0.6, -0.7, 0], chestY: -0.5, spineY: -0.16, spineX: 0.16, headY: 0.3, rootY: -0.12, thighLX: -0.55, kneeL: 0.6, thighRX: 0.4, kneeR: 0.35, lowerY: -0.15 }],
-    [0.17, { handL: [0.08, 0.13, 0.52] }],
-    [0.34, {}],
+    [0.03, { ...IAI_SET, handR: [0.15, -0.08, 0.38], bladeR: [0.2, -0.05, -1] }],
+    [0.048, sw([0.1, 0.0, 0.46], [0.95, 0.0, 0.3], 'lr', { ...IAI_SET, chestY: 0.1, handL: [0.24, -0.2, -0.02] })],
+    [0.062, sw([-0.06, 0.02, 0.52], [0.2, 0.03, 1], 'lr', { chestY: -0.15, spineY: -0.05 })],
+    [0.08, sw([-0.36, 0.04, 0.42], [-0.7, 0.05, 0.7], 'lr', { chestY: -0.4, spineY: -0.12 })],
+    [0.1, sw([-0.5, 0.05, 0.3], [-1, 0.05, 0.2], 'lr', { rootY: -0.26, chestY: -0.56, spineY: -0.16, spineX: 0.22, thighLX: -0.7, kneeL: 0.96, thighRX: 0.56, kneeR: 0.4, handL: [0.26, -0.1, 0.04] })],
+    [0.3, sw([-0.5, 0.03, 0.28], [-1, 0.0, 0.25], 'lr', { rootY: -0.25, chestY: -0.5 })],
+    [0.42, { ...IAI_SET, rootY: -0.14, spineX: 0.16 }],
+    [0.62, {}],
   ],
 }
 
-/** Coiled for the Serious Punch: low and wide, the fist drawn back past the hip, the sword hand out front. */
-const SERIOUS_COIL: PoseSpec = {
-  ...FIST_FWD,
-  handL: [0.3, -0.12, -0.3],
-  poleL: [0.7, -0.2, -1],
-  handR: [-0.18, 0.02, 0.42],
-  bladeR: [-0.6, -0.6, 0.5],
-  edgeR: [-0.5, 0.5, 0.3],
-  poleR: [-0.8, -0.5, 0],
-  chestY: 0.65,
-  spineY: 0.25,
-  spineX: 0.22,
-  headY: -0.6,
-  headX: 0.05,
-  rootY: -0.24,
-  thighRX: -0.55,
-  thighRZ: -0.2,
-  kneeR: 0.85,
-  thighLX: 0.42,
-  thighLZ: 0.22,
-  kneeL: 0.62,
-  footL: 0.2,
-  lowerY: 0.55,
-}
-
-/** The fist thrown through: arm straight down the line, hips and shoulders turned all the way over. */
-const SERIOUS_HIT: PoseSpec = {
-  ...FIST_FWD,
-  ...SWORD_BACK,
-  handL: [0.02, 0.16, 0.58],
-  poleL: [0.5, -0.8, 0],
-  chestY: -0.6,
-  spineY: -0.25,
-  spineX: 0.26,
-  headY: 0.35,
-  headX: 0,
-  rootY: -0.22,
-  thighRX: -0.7,
-  thighRZ: -0.12,
-  kneeR: 0.9,
-  thighLX: 0.6,
-  thighLZ: 0.1,
-  kneeL: 0.12,
-  footL: 0.35,
-  lowerY: -0.35,
+/** The Worldsplitter: rear back under a kilometre of light, then bring it down on the world. */
+const worldsplit: ClipDef = {
+  dur: 1.25,
+  keys: [
+    [0.0, RAISED],
+    [0.2, { ...RAISED, handR: [-0.06, 0.6, -0.04], bladeR: [0.03, 0.9, -0.42], spineX: -0.2, chestX: -0.08, headX: -0.3, rootY: -0.04 }],
+    [0.3, sw([-0.05, 0.48, 0.34], [0, 0.66, 0.74], 'chop', { twoHand: 1, spineX: 0.05 })],
+    [0.36, sw([-0.05, 0.12, 0.56], [0, -0.1, 1], 'chop', { twoHand: 1, spineX: 0.42, rootY: -0.24, thighLX: -0.9, kneeL: 1.05, thighRX: 0.52, kneeR: 0.62, poleR: [-0.7, -0.4, -0.2], poleL: [0.75, -0.4, -0.2] })],
+    [0.44, sw([-0.05, 0.02, 0.55], [0, -0.2, 1], 'chop', { twoHand: 1, spineX: 0.5, rootY: -0.32 })],
+    [0.95, sw([-0.05, 0.0, 0.54], [0, -0.22, 1], 'chop', { twoHand: 1, spineX: 0.46 })],
+    [1.25, {}],
+  ],
 }
 
 const HERO_CLIPS: Record<string, ClipDef> = {
-  jab,
-  seriousCharge: { dur: 1, loop: true, keys: [[0.16, SERIOUS_COIL]], proc: tremble(0.014) },
-  seriousRelease: {
-    dur: 1,
-    keys: [
-      [0.0, SERIOUS_COIL],
-      [0.05, SERIOUS_HIT],
-      [0.7, { handL: [0.03, 0.14, 0.56], spineX: 0.2 }],
-      [1, {}],
-    ],
-  },
+  iaiDraw,
+  worldsplit,
   slash1,
   slash2,
   slash3,
@@ -253,39 +253,11 @@ const HERO_CLIPS: Record<string, ClipDef> = {
       [0.62, {}],
     ],
   },
-  charge: {
-    dur: 1,
-    loop: true,
-    keys: [
-      [
-        0.12,
-        {
-          twoHand: 1,
-          handR: [-0.06, 0.56, 0.06],
-          bladeR: [0.04, 1, 0.06],
-          edgeR: [0, 0, 1],
-          poleR: [-0.85, 0.1, -0.2],
-          poleL: [0.85, 0.1, -0.2],
-          thighLX: -0.35,
-          thighLZ: 0.22,
-          kneeL: 0.5,
-          thighRX: 0.3,
-          thighRZ: -0.22,
-          kneeR: 0.45,
-          rootY: -0.1,
-          spineX: -0.06,
-          chestY: 0,
-          headX: -0.12,
-          lowerY: 0.2,
-        },
-      ],
-    ],
-    proc: tremble(0.012),
-  },
+  charge: { dur: 1, loop: true, keys: [[0.12, RAISED]], proc: tremble(0.012) },
   cleave: {
     dur: 0.62,
     keys: [
-      [0.0, { twoHand: 1, handR: [-0.06, 0.56, 0.06], bladeR: [0.04, 1, 0.06], edgeR: [0, 0, 1], poleR: [-0.85, 0.1, -0.2], poleL: [0.85, 0.1, -0.2], chestY: 0 }],
+      [0.0, RAISED],
       [0.05, sw([-0.05, 0.46, 0.36], [0, 0.62, 0.78], 'chop', { twoHand: 1, spineX: 0.05 })],
       [0.09, sw([-0.05, 0.02, 0.56], [0, -0.28, 1], 'chop', { twoHand: 1, spineX: 0.45, rootY: -0.2, poleR: [-0.7, -0.4, -0.2], poleL: [0.75, -0.4, -0.2] })],
       [0.13, sw([-0.05, -0.32, 0.46], [0, -0.86, 0.5], 'chop', { twoHand: 1, spineX: 0.7, rootY: -0.34, thighLX: -0.85, kneeL: 1.05, thighRX: 0.5, kneeR: 0.6 })],

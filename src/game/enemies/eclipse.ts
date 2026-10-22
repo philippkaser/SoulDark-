@@ -89,7 +89,7 @@ export class Eclipse implements System {
   private target: ReflectTarget
   onVictory?: () => void
   private hitFlash = 0
-  /** The moon punched to burning pieces. */
+  /** The moon cut to burning pieces. */
   private shards: Shards
 
   constructor(game: Game, proj: Projectiles) {
@@ -150,7 +150,7 @@ export class Eclipse implements System {
     useUI.getState().showBanner({ kind: 'boss', title: 'THE ECLIPSE', sub: 'The thing behind the sun opens its eye' })
   }
 
-  /** The falling moon, while it can still be struck (the Serious Punch homes in on it). */
+  /** The falling moon, while it can still be struck (the sword arts draw their cuts onto it). */
   get moonTarget(): THREE.Vector3 | null {
     return this.moonActive && !this.moonReturning ? this.moon.position : null
   }
@@ -200,17 +200,13 @@ export class Eclipse implements System {
     }
   }
 
-  /** The Heaven Splitter can cut the moon; the Serious Punch can break it. */
+  /** The Heaven Splitter and the Worldsplitter cut the moon in half; the Iai cuts it to pieces. */
   damage(shape: Shape, hit: Hit): number {
     if (!this.moonActive || this.moonReturning || !hit.friendly) return 0
-    if (hit.kind !== 'heaven' && hit.kind !== 'judgment' && hit.kind !== 'punch') return 0
+    if (hit.kind !== 'heaven' && hit.kind !== 'judgment' && hit.kind !== 'iai') return 0
     if (!shapeHitsSphere(shape, this.moon.position.x, this.moon.position.y, this.moon.position.z, MOON_R)) return 0
-    if (hit.kind === 'punch') {
-      if (hit.dmg >= 5000) this.shatterMoon(hit.dir ?? _w.subVectors(this.moon.position, hit.origin).normalize())
-      else {
-        this.game.fx.impact(_v.copy(this.moon.position).setY(this.moon.position.y - MOON_R), null, 8, '#ffd8a0')
-        useUI.getState().stamp('A JAB WON\'T DO. GET SERIOUS.', 'warn')
-      }
+    if (hit.kind === 'iai') {
+      this.shatterMoon(_w.subVectors(this.moon.position, hit.origin).setY(0).normalize())
       return 1
     }
     if (hit.dmg < 1800) {
@@ -314,7 +310,7 @@ export class Eclipse implements System {
     this.afterMoon()
   }
 
-  /** The Serious Punch lands: the moon bursts into burning chunks flung out down the line. */
+  /** The Iai's click: the moon falls apart into burning chunks, flung on along the cut. */
   private shatterMoon(dir: THREE.Vector3) {
     const g = this.game
     this.moonActive = false
@@ -332,7 +328,7 @@ export class Eclipse implements System {
     g.cam.addTrauma(0.8)
     g.sky.flash(_v.subVectors(at, g.camera.position).normalize(), 1.2, '#ffd0a0')
     g.score.kill('moon', 1, at)
-    useUI.getState().stamp('THE MOON, PUNCHED', 'divine')
+    useUI.getState().stamp('THE MOON, IN PIECES', 'divine')
     useUI.getState().clearBanner()
     audio.nukeShock()
     this.hp -= MAX_HP * 0.25
@@ -432,7 +428,7 @@ export class Eclipse implements System {
     const g = this.game
     this.t += dt
     this.beam.update(dt, rdt)
-    // the pieces of a punched moon fall whatever the eclipse is doing (the sandbox moon leaves it dormant)
+    // the pieces of a cut-up moon fall whatever the eclipse is doing (the sandbox moon leaves it dormant)
     this.shards.update(dt)
     const sky = g.sky.u
     this.hitFlash = Math.max(0, this.hitFlash - dt * 2)
