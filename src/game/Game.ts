@@ -120,6 +120,8 @@ export class Game {
         let k = 1
         if (at) k = Math.max(0.1, 1 - at.distanceTo(this.player.pos) / 260)
         this.cam.addTrauma(a * k)
+        // blasts are felt in the hands too, fading with distance
+        this.feel?.rumble(a, a * 0.6, 140 + a * 360, at, 180)
       },
     })
     this.player = new Player(this)
@@ -257,7 +259,8 @@ export class Game {
         const p1 = _w.lerpVectors(a, b, t1).clone()
         this.scorch.fissure(p0.x, p0.z, p1.x, p1.z, 0.8 + k * 1.6, 1)
         this.terrain.trench(a.x, a.z, b.x, b.z, 3 + k * 9, 1.5 + k * 10, { seed, from: t0, to: t1 })
-        const mid = p0.clone().lerp(p1, 0.5).setY(0.3)
+        const mid = p0.clone().lerp(p1, 0.5)
+        mid.y = this.terrain.heightAt(mid.x, mid.z) + 0.3
         fx.debris.burst(mid, Math.round(2 + k * 4), 8 + k * 14, 0.12 + k * 0.18, 1, 1.4)
         fx.dust(mid, 2, 2 + k * 3, 2 + k * 3)
         fx.emberDrift(mid, 30 + k * 70, 1.5 + k * 3, { height: 1 + k * 4, rise: 2 + k * 3, burst: 2, life: 2.5 + k * 2 })
@@ -269,19 +272,22 @@ export class Game {
     // a wall of sparks erupts along the cut as it tears open
     fx.sparkWall(a, b, 1200 + k * 3800, 18 + k * 46, undefined, 0.35)
     // a towering wave of light races down the line
-    this.slashes.fire(_v.copy(a).setY(8 + k * 10), fwd, { width: 14 + k * 26, roll: Math.PI / 2, dmg: 0, speed: 420, life: len / 420 + 0.05, color: '#ffcf70', visualOnly: true })
-    fx.flare(_v.copy(a).setY(1.5), 10 + k * 20, '#fff2d0', 0.4)
-    fx.light(_v.copy(a).addScaledVector(fwd, 10).setY(6), '#ffd8a0', 150 + k * 600, 50 + k * 80, 4)
+    this.slashes.fire(_v.copy(a).setY(a.y + 8 + k * 10), fwd, { width: 14 + k * 26, roll: Math.PI / 2, dmg: 0, speed: 420, life: len / 420 + 0.05, color: '#ffcf70', visualOnly: true })
+    // the flash sits down the cut, not on the hero: his silhouette stays dark against it
+    fx.flare(_v.copy(a).addScaledVector(fwd, 7 + k * 6).setY(a.y + 1.5), 6 + k * 9, '#fff2d0', 0.3)
+    fx.light(_v.copy(a).addScaledVector(fwd, 10).setY(a.y + 6), '#ffd8a0', 150 + k * 450, 50 + k * 80, 4)
     if (k > 0.6) this.sky.flash(fwd, 0.6 * k, '#ffd8a0')
     this.cam.addTrauma(0.4 + k * 0.6)
     this.cam.kickFov(6 + k * 8)
-    this.post.impactFrames(k > 0.7 ? [2, 1, 2, 0] : [2, 0])
+    this.cam.kick(fwd, 0.15 + k * 0.2)
+    this.post.impactFrames(k > 0.7 ? [2, 1, 0] : [2, 0])
     this.post.kickZoom(0.05 + k * 0.08)
-    this.post.flashTo(0.06 + k * 0.12, '#fff4dc', 5)
+    this.post.flashTo(0.05 + k * 0.07, '#fff4dc', 6)
     // light pours out of the opening cut, through the hero's silhouette
-    _v.copy(a).addScaledVector(fwd, 8 + k * 10).setY(this.terrain.heightAt(a.x, a.z) + 3 + k * 4)
-    this.post.rays(_v, 0.3 + k * 0.7, 0.6 + k * 0.9, '#ffe2b0')
-    this.post.streak(0.3 + k * 0.9, _v)
+    _v.copy(a).addScaledVector(fwd, 10 + k * 14).setY(a.y + 3 + k * 4)
+    this.post.rays(_v, 0.25 + k * 0.45, 0.6 + k * 0.9, '#ffe2b0')
+    this.post.streak(0.25 + k * 0.55, _v)
+    this.rumble(0.45 + k * 0.55, 0.5 + k * 0.4, 220 + k * 480)
     this.time.freeze(0.06 + k * 0.08)
     if (k > 0.8) this.time.divine(0.9, 0.3)
     audio.rumble(0.6 * k, 3)

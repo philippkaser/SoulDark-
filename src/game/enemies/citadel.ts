@@ -312,6 +312,7 @@ export class Citadel implements System {
       },
     })
     this.sinking = 1
+    g.feel.killCam(p.clone().setY(120), { style: 'behind', size: 160, dur: 1.6, text: 'THE CITADEL FALLS' })
     g.sky.flash(_v.set(0, 0.2, -1), 1, '#ff8a40')
     audio.roar(_v.set(CITADEL.x, 100, CITADEL.z), 0.5)
   }

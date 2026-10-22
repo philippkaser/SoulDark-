@@ -201,6 +201,7 @@ export class Punch implements System {
     g.cutProjectiles(sector)
     this.jabFx(fist, dir, fwd, n)
     audio.punchJab()
+    g.rumble(n > 0 ? 0.45 : 0.25, 0.6, n > 0 ? 120 : 80)
     g.score.feat('punch', clamp(n / 12, 0, 1))
     if (n > 0) {
       g.time.freeze(0.035)
@@ -280,6 +281,8 @@ export class Punch implements System {
     // the rocks rise in front of the fist, clear of the camera, ready to be thrown down the line
     if (p.altitude < 8) g.levitate.setPower(k * 0.85, _p.set(p.pos.x + Math.sin(p.yaw) * 5, p.pos.y, p.pos.z + Math.cos(p.yaw) * 5), dt)
     g.cam.addTrauma(dt * (0.12 + k * k * 1.1))
+    // the pad tightens with the coil
+    g.rumble(0.06 + k * k * 0.55, 0.1 + k * 0.35, 120)
     p.model.rig.handL.getWorldPosition(_fist)
     // light streams into the fist
     const n = Math.floor(dt * (40 + k * 160) * g.q + Math.random())
@@ -399,6 +402,10 @@ export class Punch implements System {
     this.releaseFx(w)
     this.playShot(w)
     audio.seriousPunch()
+    // the beat after: the music drops out, the ears ring
+    audio.deafen(1.4, 0.6)
+    audio.duck(0.9, 3)
+    g.rumble(1, 1, 900)
     g.fx.after(0.2, () => audio.skyRip())
     g.score.feat('serious', 1)
     useUI.getState().stamp('SERIOUS PUNCH', 'divine')
@@ -628,6 +635,7 @@ export class Punch implements System {
   private mountainBeat(w: Wave) {
     const g = this.g
     audio.rumble(1, 5)
+    g.rumble(0.75, 0.35, 1100)
     audio.nukeShock()
     g.cam.addTrauma(0.45)
     g.sky.flash(w.flat, 0.45, '#ffcf9a')

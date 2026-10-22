@@ -223,6 +223,7 @@ export class Player {
     if (n >= 2) g.post.shock(hitP, g.camera, 0.02 + n * 0.008)
     g.cam.addTrauma(0.25 + n * 0.18)
     g.cam.kickFov(-4 - n * 2)
+    g.rumble([0.3, 0.5, 0.8, 1][n], [0.55, 0.65, 0.8, 1][n], [90, 150, 280, 520][n])
     // divine parries: vertigo, the world falls away behind the hero
     if (n >= 2) g.cam.dolly(n >= 3 ? 24 : 15, n >= 3 ? 1.7 : 1.2)
     g.score.parry(n)
@@ -241,6 +242,7 @@ export class Player {
     g.fx.impact(p.clone().addScaledVector(toward, 1), toward, 1 + n * 0.6, '#ffd8a0')
     audio.block()
     g.cam.addTrauma(0.15 + n * 0.12)
+    g.rumble(0.35 + n * 0.15, 0.3, 90 + n * 50)
     g.time.freeze(0.03 + n * 0.02)
     // pushed back along the ground
     this.vel.addScaledVector(toward, -(6 + n * 6))
@@ -254,6 +256,7 @@ export class Player {
     this.lastHurt = 0
     g.post.hurt = Math.min(1, g.post.hurt + Math.min(0.7, 0.1 + dmg / 250) * (this.godMode ? 0.4 : 1))
     g.cam.addTrauma(0.15 + Math.min(0.6, dmg / 400))
+    g.rumble(Math.min(1, 0.3 + dmg / 300), 0.45, 120 + Math.min(320, dmg))
     audio.hurt(dmg >= 80)
     if (!this.godMode) g.score.hurt(dmg)
     if (knock > 0) {
@@ -658,6 +661,7 @@ export class Player {
     this.model.energyU.uLen.value = 2 + k * k * 70
     this.model.energyU.uPower.value = 0.4 + k * 0.6
     g.cam.addTrauma(dt * (0.2 + k * 1.2))
+    g.rumble(0.04 + k * k * 0.3, 0.08 + k * 0.3, 110)
     // power gathers: light streams in, the ground stirs
     const n = Math.floor(dt * (60 + k * 240))
     for (let i = 0; i < n; i++) {
@@ -670,9 +674,12 @@ export class Player {
     if (this.grounded && Math.random() < dt * (4 + k * 14)) g.fx.dust(_v.copy(this.pos).setY(this.pos.y + 0.3), 1, 3 + k * 4, 1.4)
     if (k >= 1 && !this.chargeFull) {
       this.chargeFull = true
-      g.fx.flare(_v.copy(this.pos).setY(this.pos.y + 2), 8, '#fff0c0', 0.4)
+      // the light gathers at the raised blade, above the hero, so his outline stays readable
+      g.fx.flare(_v.copy(this.pos).setY(this.pos.y + 4.2), 4.5, '#fff0c0', 0.3)
       g.fx.ring(_v.copy(this.pos).setY(this.pos.y + 0.1), 12, '#ffd890', 0.6, { thick: 0.15 })
-      g.post.flashTo(0.12, '#fff2d0', 5)
+      g.post.flashTo(0.06, '#fff2d0', 6)
+      g.cam.kickFov(-4)
+      g.rumble(0.5, 0.7, 220)
       audio.parry(0, false)
     }
     if (!f.heavy) {

@@ -57,14 +57,16 @@ function coneMat() {
       void main() {
         // fresnel: only the thin shell's silhouette shows
         float f = 1.0 - abs(dot(normalize(vN), vView));
-        // condensation combed into streaks that stream back off the apex (uv.y = 1)
-        float streak = fbm3(vec3(vUv.x * 46.0, vUv.y * 3.0 - uAge * 14.0, uSeed));
-        float wisp = smoothstep(0.38, 0.78, streak);
-        float side = pow(f, 2.6) * smoothstep(0.05, 0.6, vUv.y) * smoothstep(1.0, 0.86, vUv.y);
-        // seen from behind: a ragged ring at the open lip, the shell over the hero left clear
-        float lip = smoothstep(0.0, 0.08, vUv.y) * (1.0 - smoothstep(0.1, 0.42, vUv.y));
-        float back = lip * (0.4 + 0.6 * f);
-        float v = mix(side, back, smoothstep(0.55, 0.92, vAxis)) * (0.3 + 0.7 * wisp);
+        // condensation combed into streaks that stream back off the apex (uv.y = 1), torn ragged at the open end
+        float streak = fbm3(vec3(vUv.x * 52.0, vUv.y * 3.5 - uAge * 16.0, uSeed));
+        float tear = fbm3(vec3(vUv.x * 9.0, uAge * 3.0, uSeed + 7.0));
+        float wisp = smoothstep(0.42, 0.82, streak);
+        float body = smoothstep(0.2 + tear * 0.35, 0.75, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
+        float side = pow(f, 4.0) * body * wisp;
+        // the shock front: a thin ragged ring at the lip, which is all that shows from behind
+        float lip = exp(-pow((vUv.y - 0.06 - tear * 0.12) / 0.045, 2.0)) * (0.35 + 0.65 * wisp);
+        float back = smoothstep(0.55, 0.92, vAxis);
+        float v = mix(side * 1.4, 0.0, back) + lip * (0.35 + 0.65 * back) * (0.4 + 0.6 * f);
         gl_FragColor = vec4(uColor * v * uAlpha * vNear, 1.0);
       }`,
     transparent: true,
@@ -127,7 +129,7 @@ export class SonicBoom {
     c.fade = big ? 0.32 : 0.2
     c.len = big ? 4.2 : 3
     c.r = big ? 2.3 : 1.6
-    c.a0 = big ? 0.85 : 0.6
+    c.a0 = big ? 0.75 : 0.5
     c.lead = 0.9
     c.dir.copy(dir).normalize()
     c.mat.uniforms.uSeed.value = Math.random() * 50

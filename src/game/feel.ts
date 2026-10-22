@@ -20,6 +20,7 @@ const _v = new THREE.Vector3()
 const _w = new THREE.Vector3()
 const _f = new THREE.Vector3()
 const _s = new THREE.Vector3()
+const DUST: readonly [number, number, number] = [0.3, 0.25, 0.21]
 
 /** Slash hitstop for a swing that struck `hits` things: a longer beat the more fall, capped so a crowd never stalls the game. */
 export function slashHitstop(hits: number, finisher: boolean) {
@@ -229,7 +230,7 @@ export class Feel {
       g.aura.flare(0.3, undefined, false)
     }
     const gy = g.terrain.heightAt(chest.x, chest.z)
-    if (chest.y - gy < 3.5) fx.gpu.dustMotes(_v.set(chest.x, gy + 0.15, chest.z), big ? 70 : 30, 1, { out: big ? 14 : 8, up: 1.6, size: 0.35, life: 1.3 })
+    if (chest.y - gy < 3.5) fx.gpu.dustMotes(_v.set(chest.x, gy + 0.15, chest.z), big ? 40 : 16, 1, { out: big ? 12 : 7, up: 1.2, size: 0.3, life: 1.1, color: DUST })
     this.rumble(big ? 0.6 : 0.12, big ? 0.85 : 0.4, big ? 260 : 90)
   }
 
@@ -249,9 +250,6 @@ export class Feel {
       _w.copy(_s).multiplyScalar(sgn * (2 + Math.random() * 4)).addScaledVector(dir, 4 + Math.random() * 6).setY(0.6 + Math.random() * 1.6)
       fx.smoke.spawn(_v, _w, [0.36, 0.3, 0.26], 0.42, 0.7 + Math.random() * 0.6, 0.8 + Math.random() * 0.6, -0.4, 2.4, { grow: 1.8 })
     }
-    _v.lerpVectors(a, b, 0.5)
-    _v.y = g.terrain.heightAt(_v.x, _v.z) + 0.1
-    fx.gpu.dustMotes(_v, Math.round(10 + len * 1.5), len * 0.35, { out: 3, up: 1, size: 0.25, life: 1 })
   }
 
   /** The step ends: the cone tears off, a shock ring bursts where the hero stops. */
@@ -265,7 +263,7 @@ export class Feel {
     const gy = g.terrain.heightAt(chest.x, chest.z)
     if (chest.y - gy < 3.5) {
       fx.ring(_v.set(chest.x, gy + 0.1, chest.z), big ? 9 : 5, '#ffd8a0', big ? 0.5 : 0.35, { thick: 0.12, alpha: 0.75 })
-      fx.gpu.dustMotes(_v, big ? 90 : 40, 1.2, { out: big ? 16 : 9, up: 2, size: 0.4, life: 1.6 })
+      fx.gpu.dustMotes(_v, big ? 50 : 20, 1.2, { out: big ? 14 : 8, up: 1.5, size: 0.35, life: 1.4, color: DUST })
     }
   }
 

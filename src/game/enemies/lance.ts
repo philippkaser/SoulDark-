@@ -159,6 +159,7 @@ export class Lance implements System {
     })
     g.score.kill('station', 1, p)
     g.player.gainDivinity(40)
+    g.feel.killCam(p, { style: 'behind', size: 70, dur: 1.5, text: 'SOL LANCE DESTROYED' })
     audio.musicSting('big')
   }
 
