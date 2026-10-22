@@ -567,6 +567,78 @@ kbd {
   margin-top: 4px;
 }
 
+/* ------------------------------------------------- kill cams, rank flourish */
+
+.letterbox .bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: #000;
+  transition: height 0.3s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.letterbox .bar.top {
+  top: 0;
+}
+
+.letterbox .bar.bottom {
+  bottom: 0;
+}
+
+.letterbox.on .bar {
+  height: 10.5vh;
+}
+
+.hud .style,
+.hud .vitals,
+.hud .help,
+.hud .help-hint,
+.hud .objective,
+.hud .bosses,
+.hud .hud-canvas {
+  transition: opacity 0.25s ease;
+}
+
+.hud.cine .style,
+.hud.cine .vitals,
+.hud.cine .help,
+.hud.cine .help-hint,
+.hud.cine .objective,
+.hud.cine .bosses,
+.hud.cine .hud-canvas {
+  opacity: 0;
+}
+
+.rank-letter.flourish {
+  animation: flourish 0.9s cubic-bezier(0.2, 1.5, 0.35, 1);
+}
+
+.rank-burst {
+  position: absolute;
+  right: -34px;
+  top: -40px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  opacity: 0;
+  border: 3px solid rgba(255, 228, 170, 0.95);
+  box-shadow:
+    0 0 28px rgba(255, 170, 70, 0.9),
+    inset 0 0 26px rgba(255, 170, 70, 0.7);
+}
+
+.rank-burst.go {
+  animation: burst 0.8s cubic-bezier(0.1, 0.7, 0.3, 1);
+}
+
+.rank-burst[data-rank='6'] {
+  border-color: rgba(255, 250, 235, 1);
+  box-shadow:
+    0 0 40px rgba(255, 200, 110, 1),
+    inset 0 0 34px rgba(255, 120, 40, 0.8);
+}
+
 /* ---------------------------------------------------------- banners/stamps */
 
 .banner {
@@ -898,6 +970,35 @@ kbd {
   }
 }
 
+@keyframes flourish {
+  0% {
+    transform: scale(2.8) rotate(-14deg);
+    opacity: 0;
+    filter: brightness(3) drop-shadow(0 0 40px rgba(255, 200, 120, 1));
+  }
+  25% {
+    transform: scale(0.9) rotate(3deg);
+    opacity: 1;
+  }
+  45% {
+    transform: scale(1.08) rotate(-1deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes burst {
+  0% {
+    transform: scale(0.25);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
 @keyframes banner {
   0% {
     opacity: 0;
@@ -925,7 +1026,9 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .stamp,
   .banner,
-  .rank-letter.pop {
+  .rank-letter.pop,
+  .rank-letter.flourish,
+  .rank-burst.go {
     animation-duration: 0.01s;
   }
 }

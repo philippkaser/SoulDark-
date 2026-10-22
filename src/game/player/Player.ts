@@ -897,6 +897,7 @@ export class Player {
         const b = target.clone().addScaledVector(_v, len / 2)
         g.fx.streak(a, b, 0.25 + Math.random() * 0.3, '#cfe4ff', 2.2)
         audio.judgmentCut(this.jCuts)
+        g.rumble(0.08, 0.4, 45)
         if (this.jCuts % 4 === 0) {
           // flicker of the hero appearing among them
           this.ghostAt(target.x + (Math.random() - 0.5) * 4, target.z + (Math.random() - 0.5) * 4)

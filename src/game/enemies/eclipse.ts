@@ -359,6 +359,8 @@ export class Eclipse implements System {
     g.sky.u.uCrackN.value.copy(crackN)
     g.sky.u.uCrackA.value.copy(new THREE.Vector3().crossVectors(crackN, SUN_DIR).normalize())
     let slashed = false
+    let rose = false
+    let storm2 = false
     g.cam.play({
       dur: 14,
       blendIn: 0.5,
@@ -372,6 +374,19 @@ export class Eclipse implements System {
         if (t > 2.4) pl.cineT = t - 2.4
         if (t > 9.5) pl.cineT = t - 9.5
         if (t > 0.8 && t < 2.6 && Math.random() < 0.5) g.fx.afterimage('#ffe0a0', 0.5, 0.9)
+        // the hero ignites as he leaves the ground, and the sky answers with a storm around him
+        if (t >= 0.8 && !rose) {
+          rose = true
+          g.aura.flare(1.4)
+          g.lightning.storm(start, 14, 34, 1.2, { color: 'white', width: 0.7, sparks: false })
+          g.lightning.fan(pl.chestPos(_v), _w.set(0, 1, 0), 6, 14, 1.1, { color: 'white', width: 0.14, light: false, sparks: false })
+          g.rumble(0.8, 0.6, 900)
+        }
+        if (t >= 1.6 && !storm2) {
+          storm2 = true
+          g.aura.flare(0.6, '#fff4dc', false)
+          g.lightning.fan(pl.chestPos(_v), _w.set(0, -1, 0), 8, 60, 0.5, { color: 'white', width: 0.5, life: 0.4, sparks: false })
+        }
         if (t >= 2.6 && !slashed) {
           slashed = true
           this.skyCut()
@@ -394,9 +409,17 @@ export class Eclipse implements System {
     const g = this.game
     audio.skySplit()
     audio.musicSting('big')
+    audio.duck(0.8, 3)
     g.post.impactFrames([1, 2, 1, 2, 1, 2, 0], 1 / 14)
-    g.post.flashTo(1, '#ffffff', 1.2)
+    // the light of the dawn pours through the crack past the hero: shafts and a vertigo pull, not a white screen
+    g.post.flashTo(0.55, '#fff6e8', 1.4)
+    g.post.rays(_v.copy(g.player.pos).addScaledVector(SUN_DIR, 400), 1.6, 4, '#fff0d8')
+    g.post.streak(1.2)
+    g.post.sunRays = 1.6
+    g.cam.dolly(26, 2.4)
     g.cam.addTrauma(1)
+    g.aura.flare(1, '#fff4dc', false)
+    g.rumble(1, 1, 1500)
     this.stage = 'dawn'
     this.t = 0
     this.hp = 0
@@ -413,6 +436,7 @@ export class Eclipse implements System {
     this.shards.update(dt)
     const sky = g.sky.u
     this.hitFlash = Math.max(0, this.hitFlash - dt * 2)
+    this.sunShafts(rdt)
     switch (this.stage) {
       case 'dormant':
         return
@@ -481,6 +505,21 @@ export class Eclipse implements System {
     }
     if (this.stage !== 'dawn') sky.uFlash.value = Math.max(sky.uFlash.value, this.hitFlash * 0.5)
     this.updateMoon(dt)
+  }
+
+  /** The corona's light shafts dim while the moon or the Eye's beam stands in front of the sun; the dawn's burst fades back. */
+  private sunShafts(rdt: number) {
+    const g = this.game
+    let want = 1
+    if (this.moonActive && this.moon.visible) {
+      _v.subVectors(this.moon.position, g.camera.position)
+      const d = Math.max(1, _v.length())
+      const r = Math.atan(MOON_R / d)
+      want = 0.2 + 0.8 * smoothstep(r * 0.7, r * 1.6 + 0.04, _v.normalize().angleTo(SUN_DIR))
+    }
+    if (this.beam.busy) want = Math.min(want, 0.5)
+    if (this.stage === 'dawn') want = 1 + 0.6 * (1 - smoothstep(0.5, 4, this.t))
+    g.post.sunRays += (want - g.post.sunRays) * Math.min(1, rdt * 5)
   }
 
   private updateMoon(dt: number) {
