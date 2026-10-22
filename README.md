@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the punch's wave and the sky split, vibration merging, kill cams, returned warheads clearing the ground) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the sword arts' cut disc and the sky split, vibration merging, kill cams, returned warheads clearing the ground) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -35,7 +35,7 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 | Left click | RB / X | Slash: every swing throws a flying crescent |
 | Right click | LB / LT | **Parry**. Hold to guard, or to catch a beam on the blade |
 | E (hold) | RT | **Heaven Splitter**: charge, release, cut a canyon to the horizon |
-| F (hold for Serious) | R3 | **Punch**: a jab of air that flings everything in front of you. Hold to coil a **Serious Punch** (50 Divinity) |
+| F (hold for Worldsplitter) | R3 | **Iai**: draw and sheathe in one stroke; everything around you falls apart. Hold for the **Worldsplitter** (50 Divinity) |
 | Shift | B | Flash-step (untouchable, cuts through anything in the way) |
 | Space | A | Leap. Space again in the air: meteor dive |
 | Q | Y | **Judgment**, when Divinity is full: time stops, the hero cuts everything in sight, time resumes |
@@ -45,7 +45,7 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 
 ## How it plays
 
-**Parry everything.** Every threat in the game asks the hero what happens when it arrives. Press parry in the window and it goes back where it came from, aimed at whatever is under your crosshair. With nothing there, it goes back to its sender. Bigger threats give bigger windows and bigger spectacle. A perfect parry freezes the frame, flashes anime impact frames and slows the world while you keep moving. Each perfect parry re-arms the window, so a whole missile salvo goes home in one chain. Hold guard instead and you block, but you get pushed back and take chip damage.
+**Parry everything.** Every threat in the game asks the hero what happens when it arrives. Press parry in the window and it goes back where it came from, aimed at whatever is under your crosshair. With nothing there, it goes back to its sender. Bigger threats give bigger windows and bigger spectacle. A perfect parry freezes the frame, flashes anime impact frames and slows the world while you keep moving, and the blade answers on its own: a crescent rolls back down the line the threat came in on, and a big parry cuts a ring of steel through everything within 160 m. Each perfect parry re-arms the window, so a whole missile salvo goes home in one chain. Hold guard instead and you block, but you get pushed back and take chip damage.
 
 **The trials**
 
@@ -53,12 +53,14 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 2. **Arrowstorm.** Archer volleys darken the sky. A parry in the window deflects every arrow around you.
 3. **Iron Thunder.** Artillery on the ridge. Parry the shells back into the cannons.
 4. **The Skyfleet.** War airships fire missile salvos. Send the missiles home, or cut the ships in half.
-5. **The Colossus.** A 36 m giant with a sword to match. Parry its slam and it staggers; a Heaven Splitter cuts it in two, and the halves topple and crash.
+5. **The Colossus.** A 36 m giant with a sword to match. Parry its slam and it staggers; a Heaven Splitter cuts it in two down the middle, an Iai across the waist, and the halves topple and crash.
 6. **Sol Lance.** An orbital station fires a sun-beam. Parry it back up its own path, or hold guard to catch it and sweep it across the army.
 7. **Doctrine of Annihilation.** The citadel launches nukes. Return a warhead to its silo for a mushroom cloud on the horizon and a shockwave that rolls back across the whole plain. Or cut it in half mid-air.
 8. **The Eclipse.** Meteors, an eye that fires beams, and the moon dropped on your head: parry it home or cut it in half. When the eclipse falters, press Q.
 
-**One punch.** Tap F and the air in front of your fist goes off like a gunshot: soldiers fly, arrows and shells are swatted out of the sky. Hold it and the hero coils, the ground gives and the rocks rise; let go with 50 Divinity and the Serious Punch throws a pressure wave out to the horizon at 900 m/s. It tears a trench across the plain, vaporizes everything in a widening cone, bores straight through the mountains and splits the cloud deck overhead from horizon to horizon. It breaks a falling moon into burning pieces, punches the Colossus in two, and aimed at the eclipse during its fight, it hurts.
+**The sword arts.** Tap F for the **Iai**: the blade leaves its scabbard and goes home again faster than the eye. The cut races out as a ring of light to the horizon and the picture itself slides apart along it; on the click of the guard against the scabbard, everything within 420 m in the plane of the cut falls apart. Soldiers burn away, spires lose their tops, the Colossus is cut in two at the waist, and a falling moon comes apart in burning pieces. Look up and the plane of the cut tilts with you, through an airship fleet. Hold F instead and the blade goes up: the light poured into it climbs past the clouds while lightning crawls up its length and the rocks rise. Let go with 50 Divinity and the **Worldsplitter** brings a kilometre of light down on the world. It cuts a vertical sheet six kilometres long: a molten canyon through the plain and the mountain range behind it, the cloud deck split open to the stars from horizon to horizon, and anything in the sky along the line. Aimed at the eclipse during its fight, it cuts that too.
+
+Every swing throws a crescent of light that swells as it flies and cuts everything in its path out to about 300 m; the combo finisher throws two at once, crossed.
 
 Kills, parries and feats fill a style meter that climbs from **D**readful through **C**ataclysmic, **B**iblical, **A**pocalyptic, **S**overeign and **SS** Supreme to **SSS · Skycleaver**. Higher ranks multiply your score and intensify the music.
 
@@ -76,24 +78,28 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 - Feel (`game/feel.ts`): slash hitstop that grows with what a swing cuts down, the camera leaning into each swing, a lens punch on huge multi-kills, a bouncing camera on meteor-dive landings, and a flourish of light when the style rank reaches S, SS and SSS
 - The flash-step breaks the sound barrier: a Prandtl-Glauert vapor cone snaps around the hero, a double-crack boom, dust ripped up along the path and a shock ring where he stops. Three steps inside 1.2 s chain into a bigger boom and a FLASH STEP feat
 - Kill cams: when the Colossus falls, the Sol Lance explodes, the last airship of a fleet goes down or the citadel spire topples, the game drops into slow motion behind cinema bars for a short crane, orbit or over-the-shoulder shot. Any input skips it; it never interrupts another cinematic
-- Controller vibration (toggle in Settings) on parries by tier, blocks, hits, nearby blasts (fading with distance), Colossus footsteps, slams, the Heaven Splitter, the punch's coil and release, a caught beam and a nuke's shockwave
+- Controller vibration (toggle in Settings) on parries by tier, blocks, hits, nearby blasts (fading with distance), Colossus footsteps, slams, the Heaven Splitter, the Iai, the Worldsplitter's charge and strike, a caught beam and a nuke's shockwave
+- A screen-space world cut: the frame slides apart along a line projected from the world (the Iai's plane, the Worldsplitter's sheet) and closes again with a molten seam
 
 **Destruction**
 - A real-time slicer: meshes are cloned into two halves clipped by the cut plane, the cut faces glow molten, and the halves topple, slide or tumble, crash and dissolve. Spires, cannons, airships, the Colossus (its posed skin is baked to static geometry first), the Sol Lance station and the moon can all be cut
 - A scorch map: craters, fissures and beam trails burn into the ground and cool over time
-- The Serious Punch: a pressure wave swept through the world as a cone that widens with distance (a dedicated attack shape), with a travelling shock arch, a corridor of pressure rings, a vapor cone at the fist, a trench and dust walls torn along its path, a release cinematic, and a sky shader that parts the cloud deck in a straight canyon and a blasted ring, healing over a minute and a half
-- Deformable terrain: a heightfield the hero's power carves for real. Meteor-dive slams leave craters that grow with the fall, the Heaven Splitter tears a canyon to the horizon, shells, meteors, crashing airships and the Colossus's sword gouge the plain, the Sol Lance bores molten grooves, and a nuke or the moon leaves a bowl a hundred metres across. Crater walls turn to fractured, stratified rock; the hero, the legion, arrows, rubble, smoke and the camera all follow the ground
+- The Iai: a disc attack shape through everything around the hero, tilted with the aim, a ring of light racing out to 600 m, the cut lines flaring on everything caught before it falls, sparks thrown flat along the plane; horizontally cut spires slide off their stumps and topple like felled trees
+- The Worldsplitter: a blade of light up to 1.8 km long that follows the sword through a slow, heavy swing, a vertical slab of damage 6 km long and 4 km tall, a curtain of light that tears out along the cut to the horizon, a canyon through the far field, dust walls peeling off both lips, a late flash and thunder where the cut meets the mountains, a release cinematic, and a sky shader that parts the cloud deck in a straight canyon and a blasted ring, healing over a minute and a half
+- Explosions with a fireball made of several boiling lobes (two octaves of displacement, per-pixel soot crusting over fire seams), white-hot to orange to smoke, handing over to a heavy smoke column
+- Deformable terrain: a heightfield the hero's power carves for real. Meteor-dive slams leave craters that grow with the fall, the Heaven Splitter and the Worldsplitter tear canyons to the horizon, shells, meteors, crashing airships and the Colossus's sword gouge the plain, the Sol Lance bores molten grooves, and a nuke or the moon leaves a bowl a hundred metres across. Crater walls turn to fractured, stratified rock; the hero, the legion, arrows, rubble, smoke and the camera all follow the ground
 - An instanced horde of up to 2,200 soldiers in one draw call, animated in the vertex shader, flung, sliced and vaporized
 - Procedural mushroom clouds with a rolling toroidal cap, stem, base surge and condensation ring; shockwaves that travel at a visible speed and flatten everything in their band
 
 **World**
 - A scorched plain under an eclipse: domain-warped basalt cracks with lava seams, standing stone spires, the Dominion Citadel with searchlights and silos, mountain ridges, embers and ash
 - A sky shader with the eclipse corona, lightning, a crack that splits the sky open and a dawn that replaces the eclipse with a true sun
-- Two rings of solid mountains (`world/ridge.ts`, `world/mountains.ts`): a polar heightfield with a ridged-noise crest, gullied cliffs, strata, seeping lava veins, an eclipse rim light and their own aerial perspective. A punch wave bores real tunnels through them (`game.boreMountains(origin, dir, radius, speed)`): the rock shader discards a ragged cylinder when the wave arrives, a molten tube lines the tunnel, fractures race out from the hole, slabs and a dust surge pour down the slopes, and the thunder arrives at the speed of sound. A full Heaven Splitter cuts a slot down from the crest, and the eclipse light pours through whatever you open
+- A world eight kilometres across (`world/farField.ts`): a ridged multifractal mountain range on a 512² half-float heightfield, foothills from 600 m out and peaks near a kilometre, with the range behind the citadel kept low under the eclipse. The ground is one shader over two meshes, the arena's fine grid and a geometrically spaced grid out to the horizon, with procedural relief, rock strata, ash slopes and custom aerial perspective. `game.canyon(a, b, width, depth)` carves a sheer-walled slot through it, mountains included, and the shader draws each canyon's walls molten, cooling over a minute
+- Molten ground drawn crisply at any distance: irregular cooling plates with glowing seams of varying width, fine cracks and liquid pools, procedural rather than sampled from the scorch map
 
 **Audio (all procedural WebAudio)**
 - Synthesized slashes, parry rings by tier, cannons, missiles, sirens, nuclear flashes with distance-delayed shock, beams, titan footsteps and roars
-- A glue compressor and a brick-wall limiter on the master, the music ducking under huge booms, a generated wide-plain convolution reverb (late slap-backs off the ridges) that explosions and big hits are sent into, and ears that ring after a near nuke or a Serious Punch (everything muffles under a thin tinnitus tone for a couple of seconds)
+- A glue compressor and a brick-wall limiter on the master, the music ducking under huge booms, a generated wide-plain convolution reverb (late slap-backs off the ridges) that explosions and big hits are sent into, and ears that ring after a near nuke or the Worldsplitter (everything muffles under a thin tinnitus tone for a couple of seconds)
 - A generative score in D minor whose layers rise with the wave and your style rank
 
 ## Architecture
@@ -103,7 +109,7 @@ src/
   engine/           reusable pieces
     rig/            skeleton + IK, pose clips, procedural models, cloth, trails
     gfx/            patched materials (molten cut faces), noise, textures, post effects (PowerFX, god rays, lens streaks)
-    geom.ts         attack shapes (sphere, capsule, sector, slab, ring) and their tests
+    geom.ts         attack shapes (sphere, capsule, sector, slab, ring, cone, disc)
     particles.ts    pooled additive points and lit, depth-sorted billboard smoke
     gpuParticles.ts stateless GPU particles: closed-form motion on the world clock, ring-buffer uploads, streaks
   game/
@@ -113,13 +119,13 @@ src/
     feel.ts         controller vibration, kill cams, the flash-step's sonic boom, multi-kill and rank-up feedback
     camera.ts       follow camera, trauma, kicks, dolly-zoom, cinematic shots
     post.ts         screen-effect requests (flash, shocks, haze, light shafts, streaks) feeding the post effects
-    player/         hero model, clips, controller, flying slashes, the fist (punch.ts: jab, Serious Punch, its wave)
+    player/         hero model, clips, controller, flying slashes, the sword arts (arts.ts: the Iai, the Worldsplitter)
     enemies/        horde, arrows, projectiles (shells, missiles, nukes, meteors),
                     artillery, airships, colossus, orbital beam, Sol Lance, citadel, eclipse
     fx/             explosions, debris, afterimages, mushroom clouds, slicer,
                     particleFx.ts: the spark / ember / mote vocabulary on the GPU pools,
-                    punchFx.ts: pressure rings, vapor cones, the shock arch; shards.ts: a punched moon
-    world/          layout, sky, ground, scorch map, terrain heightfield, spires and mountains
+                    swordFx.ts: the Iai's ring of light, the Worldsplitter's blade and curtain, shock rings; shards.ts: a moon cut to pieces
+    world/          layout, sky, ground, scorch map, terrain heightfield, the far field and its mountains, spires
     waves.ts        the eight trials
     director.ts     title attract mode, campaign/sandbox switching
     score.ts        style ranks, combo, feed, tally
