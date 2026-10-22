@@ -792,7 +792,7 @@ export class Player {
     g.fx.light(_v.copy(p).setY(p.y + 2), '#ffd090', 260, 40, 5)
     // the camera drops with the impact and bounces back; the power gathered on the way down is spent
     const big = Math.min(1, fall / 30)
-    g.cam.kick(_w.set(0, -1, 0), 0.35 + big * 0.45)
+    g.cam.kick(_w.set(0, -1, 0), 0.3 + big * 0.35)
     g.cam.addTrauma(0.75 + big * 0.3)
     g.cam.kickFov(6 + big * 8)
     g.post.kickZoom(0.18 + big * 0.1)

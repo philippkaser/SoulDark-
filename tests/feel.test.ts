@@ -7,6 +7,7 @@ import { coneAlpha } from '../src/game/fx/sonicBoom'
 import type { Game } from '../src/game/Game'
 import { TimeCtl } from '../src/game/time'
 import { emptyFrame, mergeRumble, RUMBLE_GAP, type Rumble } from '../src/input/input'
+import { DEFAULT_SETTINGS } from '../src/state/settings'
 import { useUI } from '../src/state/store'
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
@@ -56,6 +57,10 @@ describe('controller vibration merging', () => {
       }
     }
     expect(sent).toBe(1)
+  })
+
+  test('on by default', () => {
+    expect(DEFAULT_SETTINGS.vibration).toBe(true)
   })
 
   test('falloff with distance', () => {
