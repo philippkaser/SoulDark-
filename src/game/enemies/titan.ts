@@ -232,7 +232,7 @@ export class Titans implements System {
     this.root.add(holder)
     t.model.container.visible = false
     // a slow beat to watch it go: low by the hero's boots, looking up at the falling giant
-    g.feel.killCam(new THREE.Vector3(t.x, 16, t.z), { style: 'low', size: 36, dur: 1.5 })
+    g.feel.killCam(new THREE.Vector3(t.x, 16, t.z), { style: 'low', size: 36, dur: 1.5, delay: 0.12 })
     g.slicer.slice([holder], plane, {
       topple: true,
       gravity: 16,
@@ -241,14 +241,16 @@ export class Titans implements System {
       glow: 1.6,
       onCrash: (p, size) => {
         g.terrain.crater(p.x, p.z, 10 + size * 0.25, 3.5, { ejecta: 1 })
-        g.fx.explosion(p.setY(4), 16)
+        g.fx.explosion(p.setY(4), 12)
         g.fx.groundShock(p, size * 0.8)
+        g.rumble(0.8, 0.4, 500, p, 200)
         g.cam.addTrauma(0.9)
         audio.landing(4)
       },
     })
     this.root.remove(holder)
-    g.fx.after(0.1, () => g.fx.explosion(_v.set(t.x, 26, t.z).clone(), 12))
+    // a burst at the wound, kept small: the falling halves are the show
+    g.fx.after(0.1, () => g.fx.explosion(_v.set(t.x, 26, t.z).clone(), 8, { debris: false }))
   }
 
   update(dt: number) {

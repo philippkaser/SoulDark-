@@ -70,14 +70,14 @@ export function killShot(style: KillCamStyle, hero: THREE.Vector3, target: THREE
     frame: (t, pos, look) => {
       const e = smoothstep(0, dur, t)
       if (style === 'low') {
-        // the camera swings a quarter way round the hero at knee height
-        const a = -0.45 + 0.6 * e
-        _v.copy(flat).multiplyScalar(-3.4).addScaledVector(side, 1.7)
+        // knee height behind the hero, drifting round him: his silhouette low in frame, the kill towering over it
+        const a = -0.22 + 0.4 * e
+        _v.copy(flat).multiplyScalar(-(4.6 - 0.8 * e)).addScaledVector(side, 1.25)
         _v.applyAxisAngle(UP, a)
         pos.copy(h).add(_v)
-        pos.y = h.y + 0.55 + 0.25 * e
-        look.lerpVectors(_w.copy(h).setY(h.y + 1.6), target, 0.72)
-        return 60 - 8 * e
+        pos.y = h.y + 0.8 + 0.2 * e
+        look.lerpVectors(_w.copy(h).setY(h.y + 1.5), target, 0.38)
+        return 64 - 8 * e
       }
       if (style === 'orbit') {
         const r = size * 2.2 + 24
@@ -111,6 +111,8 @@ export interface KillCamOpts {
   text?: string
   /** Real seconds. */
   dur?: number
+  /** Real seconds to wait first (let the blast's first flash pass). */
+  delay?: number
 }
 
 export class Feel {
@@ -119,6 +121,7 @@ export class Feel {
   readonly boom = new SonicBoom()
   private g: Game
   private kc: KillCam | null = null
+  private pending: { target: THREE.Vector3; o: KillCamOpts; at: number } | null = null
   private lastKillCam = -99
   private dashTimes: number[] = []
   private bigDash = false
@@ -163,8 +166,12 @@ export class Feel {
    * camera); any input skips it.
    */
   killCam(target: THREE.Vector3, o: KillCamOpts) {
-    if (!this.canKillCam()) return false
+    if (!this.canKillCam() || this.pending) return false
     const g = this.g
+    if (o.delay && o.delay > 0) {
+      this.pending = { target, o: { ...o, delay: 0 }, at: g.time.real + o.delay }
+      return true
+    }
     const dur = o.dur ?? 1.4
     const shot = killShot(o.style, g.player.pos, target, o.size, dur)
     const kc: KillCam = { shot, t: 0, live: true, held: Math.hypot(input.frame.moveX, input.frame.moveY) > 0.3 }
@@ -310,6 +317,11 @@ export class Feel {
   /** Before gameplay: kill-cam skips and endings, the hum of a caught beam. `pdt` drives the hero-attached cones. */
   update(rdt: number, pdt: number, f: InputFrame, enabled: boolean) {
     const g = this.g
+    const pend = this.pending
+    if (pend && g.time.real >= pend.at) {
+      this.pending = null
+      this.killCam(pend.target, pend.o)
+    }
     const kc = this.kc
     if (kc) {
       const live = kc.live
@@ -334,6 +346,7 @@ export class Feel {
   }
 
   reset() {
+    this.pending = null
     if (this.kc) this.endKillCam(true)
     this.dashTimes.length = 0
     this.boom.clear()

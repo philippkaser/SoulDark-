@@ -785,8 +785,9 @@ export class Player {
     const p = this.pos.clone()
     g.damage({ t: 'sphere', c: p, r: 15 }, { id: newHitId(), kind: 'slam', dmg: 380, power: 34, origin: p, friendly: true })
     g.fx.groundShock(p, 22)
-    g.fx.flare(_v.copy(p).setY(0.6), 12, '#fff0c8', 0.3)
-    g.fx.light(_v.copy(p).setY(2), '#ffd090', 400, 40, 5)
+    // low and tight on the crater floor: the hero stands dark against it
+    g.fx.flare(_v.copy(p).setY(p.y + 0.4), 7, '#fff0c8', 0.25)
+    g.fx.light(_v.copy(p).setY(p.y + 2), '#ffd090', 260, 40, 5)
     // the camera drops with the impact and bounces back; the power gathered on the way down is spent
     const big = Math.min(1, fall / 30)
     g.cam.kick(_w.set(0, -1, 0), 0.35 + big * 0.45)
@@ -796,7 +797,7 @@ export class Player {
     g.post.impactFrames([2, 0])
     g.post.shock(_v.copy(p).setY(p.y + 0.5), g.camera, 0.02 + big * 0.025, { speed: 1.8, width: 1 })
     g.levitate.release(null, 1 + big * 0.6)
-    g.aura.flare(0.5)
+    g.aura.flare(0.4 + big * 0.1)
     g.time.freeze(0.08 + big * 0.04)
     g.rumble(0.7 + big * 0.3, 0.6, 260 + big * 240)
     audio.landing(2 + big * 2)
