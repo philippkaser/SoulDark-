@@ -35,6 +35,7 @@ uniform float uHazeClock;
 uniform float uFringe;
 uniform float uHurt;
 uniform float uClock;
+uniform float uGrade;
 // xy a point on the cut (uv), z its angle, w the slide (screen heights); glow per cut
 uniform vec4 uCut[${MAX_SCREEN_CUTS}];
 uniform float uCutGlow[${MAX_SCREEN_CUTS}];
@@ -136,6 +137,18 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     col = mix(col, vec3(1.0, 0.98, 0.94), line * uLines * 0.75);
   }
 
+  // the grade: deep violet shadows, gold highlights, a filmic S-curve, a breath more colour, fine grain
+  if (uGrade > 0.0) {
+    float gl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    vec3 g = mix(vec3(gl), col, 1.0 + 0.2 * uGrade);
+    g += vec3(-0.008, -0.006, 0.02) * (1.0 - smoothstep(0.0, 0.3, gl)) * uGrade;
+    g += vec3(0.035, 0.014, -0.02) * smoothstep(0.45, 1.0, gl) * uGrade;
+    vec3 sc = clamp(g, 0.0, 1.0);
+    g = mix(g, sc * sc * (3.0 - 2.0 * sc), 0.28 * uGrade);
+    float gr = fract(sin(dot(floor(uv * resolution) + fract(uClock * 7.13) * 91.7, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+    col = g + gr * 0.028 * uGrade * (0.35 + 0.65 * smoothstep(0.02, 0.4, gl) * (1.0 - smoothstep(0.7, 1.0, gl)));
+  }
+
   // damage vignette
   if (uHurt > 0.0) {
     float v = smoothstep(0.35, 0.95, length((uv - 0.5) * asp * 1.1));
@@ -183,6 +196,7 @@ export class PowerFXEffect extends Effect {
         ['uCutGlow', new THREE.Uniform(new Array<number>(MAX_SCREEN_CUTS).fill(0))],
         ['uCutOn', new THREE.Uniform(0)],
         ['uClock', new THREE.Uniform(0)],
+        ['uGrade', new THREE.Uniform(1)],
       ]),
     })
   }

@@ -4,6 +4,7 @@ import { Bloom, EffectComposer, ToneMapping, Vignette } from '@react-three/postp
 import { EffectPass, SMAAEffect, ToneMappingMode } from 'postprocessing'
 import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 import * as THREE from 'three'
+import { AtmosphereEffect } from '../engine/gfx/atmosphere'
 import { GodRaysEffect } from '../engine/gfx/godrays'
 import { PowerFXEffect } from '../engine/gfx/powerfx'
 import { StreakEffect } from '../engine/gfx/streak'
@@ -74,6 +75,22 @@ function Stage({ quality, onGame }: { quality: Quality; onGame: (g: Game | null)
 }
 
 const QUALITY_K: Record<Quality, number> = { high: 1, medium: 0.75, low: 0.5 }
+
+/** Contact shadows and drifting ground haze from the depth buffer (HDR, ahead of everything that glows). */
+function AtmospherePass({ game, quality }: { game: Game | null; quality: Quality }) {
+  const { camera } = useThree()
+  const effect = useMemo(() => new AtmosphereEffect({ aoSamples: quality === 'high' ? 10 : quality === 'medium' ? 6 : 0 }), [quality])
+  useEffect(() => () => effect.dispose(), [effect])
+  useFrame(() => {
+    effect.camera = camera
+    if (!game) return
+    // the haze takes the sky's colour, so it follows the dawn
+    const fc = effect.uniforms.get('uFogColor')!.value as THREE.Color
+    fc.copy(game.sky.fogColor).multiplyScalar(0.55)
+    effect.uniforms.get('uSunDir')!.value.copy(SUN_DIR)
+  })
+  return <primitive object={effect} />
+}
 
 /** Eclipse light shafts + blast shafts (HDR, before tone mapping). */
 function RaysPass({ game, quality }: { game: Game | null; quality: Quality }) {
@@ -157,6 +174,7 @@ function PowerPass({ game, quality }: { game: Game | null; quality: Quality }) {
 function Post({ quality, game }: { quality: Quality; game: Game | null }) {
   // shafts and streaks read HDR input and only sample their own low-res buffers, so they merge with bloom + tone mapping
   const effects: ReactElement[] = [
+    <AtmospherePass key="atmo" game={game} quality={quality} />,
     <RaysPass key="rays" game={game} quality={quality} />,
     <StreakPass key="streak" game={game} quality={quality} />,
     <Bloom key="bloom" mipmapBlur intensity={1.15} luminanceThreshold={0.9} luminanceSmoothing={0.25} radius={0.8} />,
@@ -173,7 +191,7 @@ function Post({ quality, game }: { quality: Quality; game: Game | null }) {
 }
 
 export function GameCanvas({ quality, game, onGame }: { quality: Quality; game: Game | null; onGame: (g: Game | null) => void }) {
-  const dpr: [number, number] = quality === 'high' ? [1, 1.5] : quality === 'medium' ? [1, 1.25] : [0.75, 1]
+  const dpr: [number, number] = quality === 'high' ? [1, 1.75] : quality === 'medium' ? [1, 1.25] : [0.75, 1]
   return (
     <Canvas
       shadows
@@ -186,7 +204,7 @@ export function GameCanvas({ quality, game, onGame }: { quality: Quality; game: 
       }}
       style={{ position: 'fixed', inset: 0 }}
     >
-      <Environment resolution={128} frames={1} environmentIntensity={0.7}>
+      <Environment resolution={256} frames={1} environmentIntensity={0.85}>
         <Lightformer form="rect" intensity={1.1} color="#8a4a6a" scale={[80, 30, 1]} position={[0, 40, 0]} rotation-x={Math.PI / 2} />
         <Lightformer form="ring" intensity={4} color="#ffb070" scale={14} position={SUN_DIR.clone().multiplyScalar(60).toArray()} target={[0, 0, 0]} />
         <Lightformer form="rect" intensity={0.8} color="#ff6a3a" scale={[140, 8, 1]} position={[0, 3, -70]} />

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { PERTURB_GLSL } from './triplanar'
 
 /**
  * Shader patches layered onto MeshStandardMaterial:
@@ -38,7 +39,31 @@ float sdNoise(vec3 x) {
 }
 `
 
-export function patchMaterial<T extends THREE.MeshStandardMaterial>(mat: T, rim = 0.35, rimColor = '#8fa6c8'): T {
+/** Optional surface programs layered into the patch. */
+export interface PatchOpts {
+  /**
+   * Procedural basalt in world space: bedded strata in banded tones, cracks
+   * that glow near the ground, ash lying on every ledge, and a relief bump.
+   */
+  rock?: boolean
+}
+
+/** World-space rock for a patched material (see PatchOpts.rock). */
+const ROCK_GLSL = /* glsl */ `
+float rkLayer(float y) { return sdNoise(vec3(floor(y * 0.55) * 1.37, 0.5, 0.5)); }
+float rkHeight(vec3 p) {
+  float bed = sin(p.y * 2.2 + sdNoise(p * 0.12) * 5.0) * 0.5 + 0.5;
+  return bed * 0.35 + sdNoise(p * 1.3) * 0.45 + sdNoise(p * 5.0) * 0.2;
+}
+float rkCrack(vec3 p) {
+  // a few long fissures in patches, not a web over everything
+  float n = sdNoise(p * vec3(0.35, 1.1, 0.35) + sdNoise(p * 0.25) * 1.2);
+  float zone = smoothstep(0.55, 0.75, sdNoise(p * 0.18 + 3.1));
+  return smoothstep(0.018, 0.0, abs(n - 0.5)) * zone;
+}
+`
+
+export function patchMaterial<T extends THREE.MeshStandardMaterial>(mat: T, rim = 0.35, rimColor = '#8fa6c8', opts: PatchOpts = {}): T {
   const u: SDUniforms = {
     uDissolve: { value: 0 },
     uFlash: { value: 0 },
@@ -50,6 +75,8 @@ export function patchMaterial<T extends THREE.MeshStandardMaterial>(mat: T, rim 
     uCutColor: { value: new THREE.Color(1.0, 0.45, 0.12) },
   }
   mat.userData.sd = u
+  mat.userData.sdOpts = opts
+  const rock = opts.rock ? 1 : 0
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u)
     shader.vertexShader = shader.vertexShader
@@ -59,7 +86,34 @@ export function patchMaterial<T extends THREE.MeshStandardMaterial>(mat: T, rim 
         '#include <project_vertex>\nvSDWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;',
       )
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${NOISE_GLSL}`)
+      .replace('#include <common>', `#include <common>\n${NOISE_GLSL}\n${rock ? ROCK_GLSL + PERTURB_GLSL : ''}`)
+      .replace(
+        '#include <map_fragment>',
+        rock
+          ? /* glsl */ `
+        vec3 rkP = vSDWorld;
+        float rkN1 = sdNoise(rkP * 0.7);
+        float rkN2 = sdNoise(rkP * 3.3);
+        float rkL = rkLayer(rkP.y + rkN1 * 1.5);
+        vec3 rkAlb = mix(vec3(0.075, 0.055, 0.05), vec3(0.2, 0.15, 0.125), rkL * 0.7 + rkN1 * 0.3);
+        rkAlb *= 0.8 + 0.4 * rkN2;
+        float rkC = rkCrack(rkP);
+        rkAlb *= 1.0 - 0.55 * rkC;
+        diffuseColor.rgb *= rkAlb * 4.0;`
+          : '#include <map_fragment>',
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        rock
+          ? /* glsl */ `#include <normal_fragment_maps>
+        float rkH = rkHeight(vSDWorld);
+        normal = sdPerturb(-vViewPosition, normal, vec2(dFdx(rkH), dFdy(rkH)) * 3.0, faceDirection);
+        // ash settles on whatever faces the sky
+        vec3 rkWN = normalize((vec4(normal, 0.0) * viewMatrix).xyz);
+        float rkUp = smoothstep(0.45, 0.85, rkWN.y) * (0.6 + 0.4 * sdNoise(vSDWorld * 0.8));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.255, 0.225), rkUp * 0.75);`
+          : '#include <normal_fragment_maps>',
+      )
       .replace(
         '#include <clipping_planes_fragment>',
         /* glsl */ `#include <clipping_planes_fragment>
@@ -78,6 +132,10 @@ export function patchMaterial<T extends THREE.MeshStandardMaterial>(mat: T, rim 
         totalEmissiveRadiance += uRimColor * sdFres * uRimStrength;
         totalEmissiveRadiance += uEdgeColor * sdEdge * 8.0;
         totalEmissiveRadiance += vec3(1.0, 0.9, 0.8) * uFlash * (0.35 + sdFres);
+        #if ${rock}
+          // the cracks still glow where the rock meets the burning plain
+          totalEmissiveRadiance += vec3(1.0, 0.24, 0.04) * rkC * smoothstep(7.0, 0.5, vSDWorld.y) * 1.2;
+        #endif
         if (uCut > 0.0 && !gl_FrontFacing) {
           float cn = sdNoise(vSDWorld * 1.7) * 0.6 + sdNoise(vSDWorld * 6.0) * 0.4;
           totalEmissiveRadiance += uCutColor * uCut * (2.0 + cn * 6.0);
@@ -85,7 +143,7 @@ export function patchMaterial<T extends THREE.MeshStandardMaterial>(mat: T, rim 
         }`,
       )
   }
-  mat.customProgramCacheKey = () => 'sd-v2'
+  mat.customProgramCacheKey = () => `sd-v3-${rock}`
   return mat
 }
 
@@ -109,10 +167,19 @@ export interface MatParams {
   rimColor?: string
   transparent?: boolean
   opacity?: number
+  rock?: boolean
+  /** Physical extras (any of them makes it a MeshPhysicalMaterial). */
+  clearcoat?: number
+  clearcoatRoughness?: number
+  sheen?: number
+  sheenColor?: THREE.ColorRepresentation
+  sheenRoughness?: number
+  envMapIntensity?: number
 }
 
 export function standard(p: MatParams) {
-  const m = new THREE.MeshStandardMaterial({
+  const physical = p.clearcoat !== undefined || p.sheen !== undefined
+  const m = new (physical ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial)({
     color: p.color,
     roughness: p.roughness ?? 0.6,
     metalness: p.metalness ?? 0,
@@ -129,7 +196,15 @@ export function standard(p: MatParams) {
     opacity: p.opacity ?? 1,
   })
   if (p.normalMap) m.normalScale.setScalar(p.normalScale ?? 1)
-  return patchMaterial(m, p.rim ?? 0.3, p.rimColor)
+  if (p.envMapIntensity !== undefined) m.envMapIntensity = p.envMapIntensity
+  if (m instanceof THREE.MeshPhysicalMaterial) {
+    m.clearcoat = p.clearcoat ?? 0
+    m.clearcoatRoughness = p.clearcoatRoughness ?? 0.1
+    m.sheen = p.sheen ?? 0
+    if (p.sheenColor !== undefined) m.sheenColor.set(p.sheenColor)
+    m.sheenRoughness = p.sheenRoughness ?? 0.5
+  }
+  return patchMaterial(m, p.rim ?? 0.3, p.rimColor, { rock: p.rock })
 }
 
 /**
@@ -143,7 +218,7 @@ export function clonePatched(src: THREE.MeshStandardMaterial): THREE.MeshStandar
   const m = src.clone()
   src.userData = saved
   if (!u) return m
-  const c = patchMaterial(m, u.uRimStrength.value, '#' + u.uRimColor.value.getHexString())
+  const c = patchMaterial(m, u.uRimStrength.value, '#' + u.uRimColor.value.getHexString(), saved.sdOpts as PatchOpts | undefined)
   const cu = sdUniforms(c)!
   cu.uRimColor.value.copy(u.uRimColor.value)
   cu.uFlash.value = u.uFlash.value

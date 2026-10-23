@@ -1335,6 +1335,10 @@ export class Player {
     ;(hm.material as THREE.MeshBasicMaterial).color.setRGB(hb * 1.25, hb * 0.9, hb * 0.45)
     const gm = this.model.glowMat
     gm.emissiveIntensity += ((ready ? 12 : 7) - gm.emissiveIntensity) * damp(6, dt)
+    // the filigree in the plates fills with light as Divinity does, and breathes
+    const am = this.model.armorMat
+    const want = 0.2 + (this.divinity / 100) * 1.1 * (0.85 + 0.15 * Math.sin(g.time.real * 2.4)) + (ready ? 0.4 : 0)
+    am.emissiveIntensity += (want - am.emissiveIntensity) * damp(4, dt)
     this.model.energyU.uTime.value += dt
     if (this.energyFade > 0) {
       this.energyFade -= dt

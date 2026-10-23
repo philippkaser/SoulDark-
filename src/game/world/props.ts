@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import { audio } from '../../audio/audio'
 import { standard } from '../../engine/gfx/materials'
-import { rockTexture } from '../../engine/gfx/textures'
 import { shapeHitsCapsule, type Shape } from '../../engine/geom'
 import { mulberry32 } from '../../engine/math'
 import type { Game } from '../Game'
@@ -22,21 +21,35 @@ interface Spire {
 
 function spireGeometry(d: SpireDef) {
   const r = mulberry32(d.seed)
-  const seg = 14
-  const g = new THREE.CylinderGeometry(d.r * (0.35 + r() * 0.3), d.r, d.h, 11, seg, false)
+  const seg = Math.max(24, Math.round(d.h * 0.9))
+  const radial = 22
+  const top = d.r * (0.35 + r() * 0.3)
+  const g = new THREE.CylinderGeometry(top, d.r, d.h, radial, seg, false)
   g.translate(0, d.h / 2, 0)
   const pos = g.attributes.position as THREE.BufferAttribute
   const leanX = (r() - 0.5) * 0.18
   const leanZ = (r() - 0.5) * 0.18
   const phase = r() * 10
+  // a broken crown: the top ring of the column snapped off at a slant, in jags
+  const crownTilt = (r() - 0.5) * 0.5
+  const crownDir = r() * Math.PI * 2
+  const jag = (a: number) => Math.sin(a * 5 + phase) * 0.5 + Math.sin(a * 11 + phase * 2) * 0.3 + Math.sin(a * 23 + phase) * 0.2
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i)
-    const y = pos.getY(i)
+    let y = pos.getY(i)
     const z = pos.getZ(i)
     const a = Math.atan2(z, x)
     const t = y / d.h
+    // the old swelling, plus bedded ledges every few metres and vertical fluting worn into the faces
     const bulge = 1 + 0.18 * Math.sin(a * 3 + phase + t * 6) + 0.1 * Math.sin(a * 7 - t * 11 + phase) + 0.12 * Math.sin(t * 9 + phase)
-    pos.setXYZ(i, x * bulge + leanX * y, y, z * bulge + leanZ * y)
+    const bed = y * 0.32 + Math.sin(a * 2 + phase) * 0.25
+    const ledge = 0.07 * Math.pow(1 - (bed - Math.floor(bed)), 6)
+    const flute = 0.05 * Math.sin(a * 9 + phase * 3 + t * 2) + 0.025 * Math.sin(a * 17 - t * 5)
+    const k = bulge * (1 + ledge + flute)
+    if (t > 0.999) {
+      y += Math.tan(crownTilt) * Math.cos(a - crownDir) * top + jag(a) * Math.min(3, d.h * 0.06)
+    }
+    pos.setXYZ(i, x * k + leanX * y, y, z * k + leanZ * y)
   }
   g.computeVertexNormals()
   return g
@@ -72,9 +85,7 @@ export class Props implements Damageable {
 
   constructor(game: Game) {
     this.game = game
-    const tex = rockTexture()
-    tex.repeat.set(2, 3)
-    this.mat = standard({ color: '#6e625e', roughness: 0.95, map: tex, rim: 0.15, rimColor: '#ff9a60' })
+    this.mat = standard({ color: '#7c706a', roughness: 0.92, rock: true, rim: 0.12, rimColor: '#ff9a60' })
     this.build()
   }
 

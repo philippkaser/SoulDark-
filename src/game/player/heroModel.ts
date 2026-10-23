@@ -9,12 +9,67 @@ import { SwordTrail } from '../../engine/rig/trail'
 
 export interface HeroModel extends CharacterModel {
   halo: THREE.Group
+  /** The plate armour: its engraved filigree glows with the hero's Divinity. */
+  armorMat: THREE.MeshStandardMaterial
   energyBlade: THREE.Mesh
   energyU: { uTime: { value: number }; uLen: { value: number }; uPower: { value: number } }
   glowMat: THREE.MeshStandardMaterial
 }
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
+
+/** Filigree engraved into the plates: scrolling vines, rings and runes, white on black (an emissive mask). */
+function filigreeTexture() {
+  const tex = canvasTexture(256, 256, (ctx) => {
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, 256, 256)
+    ctx.strokeStyle = '#fff'
+    ctx.lineCap = 'round'
+    let seed = 7
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    // vines: long scrolling curves with curling tendrils
+    for (let v = 0; v < 6; v++) {
+      ctx.lineWidth = 1.1
+      ctx.beginPath()
+      let x = rnd() * 256
+      let y = rnd() * 256
+      let a = rnd() * Math.PI * 2
+      ctx.moveTo(x, y)
+      for (let i = 0; i < 60; i++) {
+        a += Math.sin(i * 0.35 + v) * 0.35
+        x += Math.cos(a) * 5
+        y += Math.sin(a) * 5
+        ctx.lineTo(x, y)
+        if (i % 12 === 6) {
+          // a tendril curling off
+          ctx.moveTo(x, y)
+          for (let k = 0; k < 8; k++) ctx.lineTo(x + Math.cos(a + 1.6 + k * 0.5) * (8 - k), y + Math.sin(a + 1.6 + k * 0.5) * (8 - k))
+          ctx.moveTo(x, y)
+        }
+      }
+      ctx.stroke()
+    }
+    // rings and runes
+    for (let i = 0; i < 9; i++) {
+      const x = rnd() * 256
+      const y = rnd() * 256
+      const r = 4 + rnd() * 9
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(x, y - r * 0.6)
+      ctx.lineTo(x, y + r * 0.6)
+      ctx.moveTo(x - r * 0.4, y - r * 0.1)
+      ctx.lineTo(x + r * 0.4, y + r * 0.2)
+      ctx.stroke()
+    }
+  })
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  return tex
+}
 
 /** Ivory coat with a gold hem. */
 function coatTexture() {
@@ -87,11 +142,28 @@ export function buildHero(): HeroModel {
     return m
   }
   const rimGold = '#ffcf7a'
+  // lacquered gunmetal plate: a clear coat over brushed steel, so every edge catches the eclipse
   const armor = reg(
-    standard({ color: '#4a4b55', metalness: 0.82, roughness: 0.75, map: A.map, normalMap: A.normalMap, roughnessMap: A.roughnessMap, normalScale: 0.45, rim: 0.55, rimColor: rimGold }),
+    standard({
+      color: '#4a4c58',
+      metalness: 0.9,
+      roughness: 0.5,
+      map: A.map,
+      normalMap: A.normalMap,
+      roughnessMap: A.roughnessMap,
+      normalScale: 0.5,
+      emissive: '#ffb45a',
+      emissiveMap: filigreeTexture(),
+      emissiveIntensity: 0.4,
+      clearcoat: 0.6,
+      clearcoatRoughness: 0.22,
+      envMapIntensity: 1.6,
+      rim: 0.5,
+      rimColor: rimGold,
+    }),
   )
-  const under = reg(standard({ color: '#2b2a30', roughness: 0.85, normalMap: C.normalMap, normalScale: 0.8, rim: 0.35, rimColor: rimGold }))
-  const gold = reg(standard({ color: '#c9a04a', metalness: 1, roughness: 0.28, emissive: '#ff9a30', emissiveIntensity: 0.12, rim: 0.5, rimColor: rimGold }))
+  const under = reg(standard({ color: '#2b2a30', roughness: 0.85, normalMap: C.normalMap, normalScale: 0.8, sheen: 0.8, sheenColor: '#7a5a40', sheenRoughness: 0.45, rim: 0.35, rimColor: rimGold }))
+  const gold = reg(standard({ color: '#d6aa50', metalness: 1, roughness: 0.2, emissive: '#ff9a30', emissiveIntensity: 0.12, clearcoat: 0.4, clearcoatRoughness: 0.1, envMapIntensity: 2, rim: 0.5, rimColor: rimGold }))
   const glow = reg(standard({ color: '#000000', emissive: '#ffe1a0', emissiveIntensity: 7, rim: 0 }))
   const blade = reg(standard({ color: '#eef2f8', metalness: 1, roughness: 0.14, rim: 0.7, rimColor: '#fff2d0' }))
 
@@ -269,6 +341,9 @@ export function buildHero(): HeroModel {
     side: THREE.DoubleSide,
     alphaMap: tatteredAlpha(5, 0.35),
     alphaTest: 0.5,
+    sheen: 1,
+    sheenColor: '#ffe2b0',
+    sheenRoughness: 0.4,
     rim: 0.4,
     rimColor: rimGold,
   })
@@ -315,6 +390,7 @@ export function buildHero(): HeroModel {
     scale: 1,
     stepLen: 0.8,
     halo,
+    armorMat: armor,
     energyBlade,
     energyU,
     glowMat: glow,
