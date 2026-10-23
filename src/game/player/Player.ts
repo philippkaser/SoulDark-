@@ -3,6 +3,7 @@ import { audio, type LoopHandle } from '../../audio/audio'
 import { clamp, damp, turnToward, wrapAngle } from '../../engine/math'
 import { Avatar } from '../../engine/rig/avatar'
 import type { InputFrame } from '../../input/input'
+import { useUI } from '../../state/store'
 import { slashHitstop } from '../feel'
 import type { Game } from '../Game'
 import { newHitId, type ParryResult, type Tier } from '../types'
@@ -10,7 +11,7 @@ import { ARENA_HARD, ARENA_R } from '../world/layout'
 import { HIT_AT } from './heroClips'
 import { buildHero, type HeroModel } from './heroModel'
 import { HeroPower } from './power'
-import { HOLD_TO_CHARGE, IAI_DRAW, IAI_DUR, IAI_SHEATHE, SwordArts, WORLD_DUR, WORLD_HIT } from './arts'
+import { HOLD_TO_CHARGE, HORIZON_COST, IAI_DRAW, IAI_DUR, IAI_SHEATHE, SwordArts, WORLD_DUR, WORLD_HIT } from './arts'
 
 export type PState =
   | 'free'
@@ -30,6 +31,7 @@ export type PState =
   | 'iai'
   | 'wcharge'
   | 'wsplit'
+  | 'hcut'
   | 'cine'
   | 'dead'
   | 'victory'
@@ -354,6 +356,10 @@ export class Player {
       if (this.divinity >= 100) return this.startJudgment()
     }
     if (cancellable && want(f.art) && this.arts.ready) return this.startIai()
+    if (cancellable && want(f.horizon)) {
+      if (this.arts.horizonReady) return this.startHorizon()
+      if (this.divinity < HORIZON_COST) useUI.getState().stamp(`HORIZON CUT NEEDS ${HORIZON_COST} DIVINITY`, 'warn')
+    }
 
     switch (this.state) {
       case 'free':
@@ -474,6 +480,18 @@ export class Player {
       }
       case 'wcharge':
         this.updateWorldCharge(dt, f, enabled)
+        break
+      case 'hcut':
+        if (this.grounded) this.locomote(dt, 0, 0, 0, 0)
+        else {
+          this.vel.y = Math.max(this.vel.y - GRAVITY * 0.15 * dt, -1)
+          this.integrate(dt)
+        }
+        if (!this.fired && this.t >= IAI_DRAW) {
+          this.fired = true
+          this.arts.horizonCut()
+        }
+        if (this.t >= IAI_DUR + 0.15) this.enter(this.grounded ? 'free' : 'air')
         break
       case 'wsplit':
         if (this.grounded) this.locomote(dt, 0, 0, 0, 0)
@@ -752,6 +770,16 @@ export class Player {
     if (!this.grounded) this.vel.y = Math.max(this.vel.y, 1)
   }
 
+  /** The Horizon Cut: the same draw as the Iai, aimed at the skyline. */
+  private startHorizon() {
+    this.stopCharge()
+    this.model.energyBlade.visible = false
+    this.enter('hcut')
+    this.yaw = this.aimYaw
+    this.vel.x *= 0.15
+    this.vel.z *= 0.15
+  }
+
   private startWorldCharge() {
     this.enter('wcharge')
     this.arts.beginCharge()
@@ -981,6 +1009,7 @@ export class Player {
       case 'judgment':
         return this.t < 1.68 ? 'iai' : 'sheathe'
       case 'iai':
+      case 'hcut':
         return 'iaiDraw'
       case 'wcharge':
         return 'charge'
@@ -1017,7 +1046,7 @@ export class Player {
       action: clip,
       actionT: this.state === 'judgment' && this.t >= 1.68 ? this.t - 1.68 : this.state === 'cine' ? this.cineT : this.t,
       time: g.time.real,
-      trail: this.state === 'slash' || this.state === 'airslash' || this.state === 'cleave' || this.state === 'parry' || this.state === 'iai' || this.state === 'wsplit',
+      trail: this.state === 'slash' || this.state === 'airslash' || this.state === 'cleave' || this.state === 'parry' || this.state === 'iai' || this.state === 'hcut' || this.state === 'wsplit',
       sharpness: this.state === 'slash' || this.state === 'parry' || this.state === 'cleave' || this.state === 'iai' || this.state === 'wsplit' ? 45 : 30,
       windX: wind.x - this.vel.x * 0.6,
       windZ: wind.z - this.vel.z * 0.6,

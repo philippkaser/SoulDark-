@@ -7,6 +7,10 @@ export const FAR_HALF = 4096
 export const MAX_CUTS = 12
 /** How deep a canyon can go below the plain (m). */
 export const CANYON_FLOOR = -90
+/** Most horizontal slices (the Horizon Cut) the ground shader keeps exactly flat; older ones are baked in. */
+export const MAX_SLICES = 4
+/** How fast a slice's cut line races out across the world (m/s). */
+export const SLICE_SPEED = 6000
 
 // ---------------------------------------------------------------------------
 // Seeded value noise (CPU; deterministic so tests and every run agree)
@@ -91,6 +95,16 @@ export interface FarCut {
   depth: number
 }
 
+export interface FarSlice {
+  x: number
+  z: number
+  /** Everything within this radius above `y` is cut away. */
+  r: number
+  y: number
+  /** World clock time of the cut. */
+  time: number
+}
+
 export interface CutOpts {
   /** Raggedness of the walls, 0..0.5. */
   jag?: number
@@ -117,6 +131,10 @@ export class FarField {
   /** Packed for the shader: (ax, az, bx, bz) and (hw, time, depth, 0) per cut. */
   readonly cutA: THREE.Vector4[] = []
   readonly cutB: THREE.Vector4[] = []
+  readonly slices: FarSlice[] = []
+  /** Packed for the shader: (x, z, r, y) and (time, on, 0, 0) per slice. */
+  readonly sliceA: THREE.Vector4[] = []
+  readonly sliceB: THREE.Vector4[] = []
   version = 0
   private base: Float32Array
   private data: Uint16Array
@@ -131,6 +149,10 @@ export class FarField {
     for (let i = 0; i < MAX_CUTS; i++) {
       this.cutA.push(new THREE.Vector4())
       this.cutB.push(new THREE.Vector4(0, -1e6, 0, 0))
+    }
+    for (let i = 0; i < MAX_SLICES; i++) {
+      this.sliceA.push(new THREE.Vector4(0, 0, 0, 1e5))
+      this.sliceB.push(new THREE.Vector4(-1e6, 0, 0, 0))
     }
     const H = this.heights
     for (let j = 0; j < res; j++) {
@@ -152,13 +174,55 @@ export class FarField {
   reset() {
     this.heights.set(this.base)
     this.cuts.length = 0
+    this.slices.length = 0
     this.pack()
     this.upload()
     this.version++
   }
 
-  /** Bilinear height at (x, z), matching the GPU's linear filtering (clamped at the edge). */
+  /** Height at (x, z) with the Horizon Cut's slices taken off. */
   heightAt(x: number, z: number): number {
+    const h = this.rawHeightAt(x, z)
+    let top = h
+    for (const s of this.slices) {
+      if (top > s.y && (x - s.x) * (x - s.x) + (z - s.z) * (z - s.z) < s.r * s.r) top = s.y
+    }
+    return top
+  }
+
+  /**
+   * Cut everything within `r` of (x, z) above height `y` away, flat (the
+   * caller animates what was cut off). The oldest slice beyond MAX_SLICES is
+   * baked into the heights.
+   */
+  slice(x: number, z: number, r: number, y: number, time: number) {
+    if (this.slices.length >= MAX_SLICES) this.bake(this.slices.shift()!)
+    this.slices.push({ x, z, r, y, time })
+    this.pack()
+    this.version++
+  }
+
+  private bake(s: FarSlice) {
+    const n = this.res
+    const c = this.cell
+    const H = this.heights
+    const i0 = Math.max(0, Math.floor((s.x - s.r + this.half) / c))
+    const i1 = Math.min(n - 1, Math.ceil((s.x + s.r + this.half) / c))
+    const j0 = Math.max(0, Math.floor((s.z - s.r + this.half) / c))
+    const j1 = Math.min(n - 1, Math.ceil((s.z + s.r + this.half) / c))
+    for (let j = j0; j <= j1; j++) {
+      const dz = -this.half + (j + 0.5) * c - s.z
+      for (let i = i0; i <= i1; i++) {
+        const dx = -this.half + (i + 0.5) * c - s.x
+        const k = j * n + i
+        if (H[k] > s.y && dx * dx + dz * dz < s.r * s.r) H[k] = s.y
+      }
+    }
+    this.dirty = true
+  }
+
+  /** Bilinear height at (x, z), matching the GPU's linear filtering (clamped at the edge). */
+  rawHeightAt(x: number, z: number): number {
     const n = this.res
     let u = (x + this.half) / this.cell - 0.5
     let v = (z + this.half) / this.cell - 0.5
@@ -252,6 +316,16 @@ export class FarField {
   }
 
   private pack() {
+    for (let i = 0; i < MAX_SLICES; i++) {
+      const s = this.slices[i]
+      if (s) {
+        this.sliceA[i].set(s.x, s.z, s.r, s.y)
+        this.sliceB[i].set(s.time, 1, 0, 0)
+      } else {
+        this.sliceA[i].set(0, 0, 0, 1e5)
+        this.sliceB[i].set(-1e6, 0, 0, 0)
+      }
+    }
     for (let i = 0; i < MAX_CUTS; i++) {
       const c = this.cuts[i]
       if (c) {

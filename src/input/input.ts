@@ -3,10 +3,11 @@
  *
  * Keyboard + mouse: WASD move, mouse aim, LMB slash, RMB parry (hold to guard),
  * Shift dash, Space leap (again in the air: meteor dive), E hold to charge the
- * Heaven Splitter, F Iai (hold: Worldsplitter), Q Judgment, Esc pause, 1-0
- * sandbox spawns.
+ * Heaven Splitter, F Iai (hold: Worldsplitter), R Horizon Cut, Q Judgment,
+ * Esc pause, 1-0 sandbox spawns.
  * Gamepad (standard): LS move, RS aim, RB / X slash, LB / LT parry, RT charge,
- * R3 Iai, B dash, A leap, Y Judgment, Start pause.
+ * R3 Iai, L3 / D-pad up Horizon Cut, B dash, A leap (hold: Sky Leap),
+ * Y Judgment, Start pause.
  */
 
 export interface InputFrame {
@@ -19,10 +20,14 @@ export interface InputFrame {
   guard: boolean
   dash: boolean
   jump: boolean
+  /** Leap held (held through the leap: the Sky Leap). */
+  jumpHeld: boolean
   heavy: boolean
   /** Sword art pressed this frame / held (a tap is the Iai, the Worldsplitter charges while held). */
   art: boolean
   artHeld: boolean
+  /** The Horizon Cut. */
+  horizon: boolean
   ult: boolean
   menu: boolean
   /** Sandbox spawn hotkey 0-9, or -1. */
@@ -40,9 +45,11 @@ export const emptyFrame = (): InputFrame => ({
   guard: false,
   dash: false,
   jump: false,
+  jumpHeld: false,
   heavy: false,
   art: false,
   artHeld: false,
+  horizon: false,
   ult: false,
   menu: false,
   spawn: -1,
@@ -232,9 +239,11 @@ class InputManager {
       f.guard = this.mouse[2] || k.has('KeyK')
       f.dash = p.has('ShiftLeft') || p.has('ShiftRight') || p.has('KeyL')
       f.jump = p.has('Space')
+      f.jumpHeld = k.has('Space')
       f.heavy = k.has('KeyE') || this.mouse[1]
       f.art = p.has('KeyF')
       f.artHeld = k.has('KeyF')
+      f.horizon = p.has('KeyR')
       f.ult = p.has('KeyQ')
       const ms = 0.0024 * sensitivity
       f.lookX = this.mouseDX * ms
@@ -311,6 +320,8 @@ class InputManager {
     if (btn(11)) f.artHeld = true
     if (down(1)) f.dash = true
     if (down(0)) f.jump = true
+    if (btn(0)) f.jumpHeld = true
+    if (down(10) || down(12)) f.horizon = true
     if (down(3)) f.ult = true
     if (down(9)) f.menu = true
   }

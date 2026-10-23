@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { NOISE_GLSL } from '../../engine/gfx/noise'
 import { PERTURB_GLSL } from '../../engine/gfx/triplanar'
 import type { Quality } from '../../state/settings'
-import { MAX_CUTS, type FarField } from './farField'
+import { MAX_CUTS, MAX_SLICES, SLICE_SPEED, type FarField } from './farField'
 import { SCORCH_HALF, type ScorchMap } from './scorch'
 import type { Terrain } from './terrain'
 
@@ -14,6 +14,8 @@ uniform float uScorchHalf;
 uniform float uTexel;
 uniform float uFarHalf;
 uniform float uFarTexel;
+uniform vec4 uSliceA[${MAX_SLICES}];
+uniform vec4 uSliceB[${MAX_SLICES}];
 float tSample(vec2 uv) { return textureLod(uHeight, uv, 0.0).r; }
 float fSample(vec2 p) { return textureLod(uFar, p / (2.0 * uFarHalf) + 0.5, 0.0).r; }
 float mHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -38,18 +40,32 @@ float mDetail(vec2 p, float h, int oct) {
   return (s - 0.55) * amp;
 }
 float farH(vec2 p, int oct) { float h = fSample(p); return h + mDetail(p, h, oct); }
+// the Horizon Cut: the lowest slice plane over p (or far above everything)
+float sliceTop(vec2 p) {
+  float y = 1e5;
+  for (int i = 0; i < ${MAX_SLICES}; i++) {
+    if (uSliceB[i].y < 0.5) continue;
+    vec4 A = uSliceA[i];
+    if (length(p - A.xy) < A.z) y = min(y, A.w);
+  }
+  return y;
+}
+float farHC(vec2 p, int oct) { return min(farH(p, oct), sliceTop(p)); }
 `
 
 /**
- * The battlefield floor and the mountains around it, one material in two
+ * The battlefield floor and the mountains around it, one material in three
  * modes: NEAR displaces the dense arena grid by the carved field (which
  * already includes the far field under it), FAR displaces the coarse grid that
- * runs out to the horizon by the far field plus procedural ridges. Both share
+ * runs out to the horizon by the far field plus procedural ridges (flattened
+ * under the Horizon Cut's slices), CAP draws a peak the Horizon Cut took off:
+ * the old surface above the slice plane and a flat molten underside, carried
+ * by the mesh's own transform while its texture stays glued to the rock. All share
  * the shading: basalt and ash with ember-lit cracks, stratified rock on steep
  * ground, battle scars, and molten rock rendered as procedural crust and
  * cracks so it stays crisp up close no matter how coarse the heat mask is.
  */
-export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarField, quality: Quality, mode: 'near' | 'far', shared?: Record<string, THREE.IUniform>) {
+export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarField, quality: Quality, mode: 'near' | 'far' | 'cap', shared?: Record<string, THREE.IUniform>) {
   const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, metalness: 0 })
   const uniforms: Record<string, THREE.IUniform> = shared ?? {
     uBurn: { value: scorch.burnTex },
@@ -65,23 +81,35 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
     uFarTexel: { value: 1 / far.res },
     uCutA: { value: far.cutA },
     uCutB: { value: far.cutB },
+    uSliceA: { value: far.sliceA },
+    uSliceB: { value: far.sliceB },
     uAerial: { value: 0.00052 },
   }
   const detail = quality === 'low' ? 0 : 1
   const isFar = mode === 'far' ? 1 : 0
+  const isCap = mode === 'cap' ? 1 : 0
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vGPos;\n${HEIGHT_GLSL}`)
+      .replace(
+        '#include <common>',
+        `#include <common>\nvarying vec3 vGPos;\n${HEIGHT_GLSL}\n#if ${isCap}\nattribute float aLayer;\nattribute float aIn;\nuniform float uCapY;\nvarying float vLayer;\nvarying float vBelow;\nvarying float vIn;\n#endif`,
+      )
       .replace(
         '#include <beginnormal_vertex>',
         /* glsl */ `
-        #if ${isFar}
+        #if ${isCap}
           float fE = 2.0 * uFarHalf * uFarTexel;
-          vec3 objectNormal = normalize(vec3(
+          vec3 objectNormal = aLayer > 0.5 ? vec3(0.0, -1.0, 0.0) : normalize(vec3(
             farH(position.xz - vec2(fE, 0.0), 2) - farH(position.xz + vec2(fE, 0.0), 2),
             2.0 * fE,
             farH(position.xz - vec2(0.0, fE), 2) - farH(position.xz + vec2(0.0, fE), 2)));
+        #elif ${isFar}
+          float fE = 2.0 * uFarHalf * uFarTexel;
+          vec3 objectNormal = normalize(vec3(
+            farHC(position.xz - vec2(fE, 0.0), 2) - farHC(position.xz + vec2(fE, 0.0), 2),
+            2.0 * fE,
+            farHC(position.xz - vec2(0.0, fE), 2) - farHC(position.xz + vec2(0.0, fE), 2)));
         #else
           vec2 tUv = position.xz / (2.0 * uScorchHalf) + 0.5;
           float tE = uTexel * 2.0;
@@ -97,13 +125,23 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
       .replace(
         '#include <begin_vertex>',
         /* glsl */ `vec3 transformed = vec3(position);
-        #if ${isFar}
-          transformed.y += farH(position.xz, 2);
+        #if ${isCap}
+          float fh = farH(position.xz, 2);
+          vLayer = aLayer;
+          vIn = aIn;
+          vBelow = uCapY - fh;
+          transformed.y = aLayer > 0.5 ? uCapY : max(fh, uCapY);
+        #elif ${isFar}
+          transformed.y += farHC(position.xz, 2);
         #else
           transformed.y += tSample(tUv);
         #endif`,
       )
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvGPos = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+      .replace(
+        '#include <project_vertex>',
+        // a cap is shaded where the rock stood, wherever its transform has carried it
+        `#include <project_vertex>\nvGPos = ${isCap ? 'transformed' : '(modelMatrix * vec4(transformed, 1.0)).xyz'};`,
+      )
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -118,6 +156,14 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
         uniform float uAerial;
         uniform vec4 uCutA[${MAX_CUTS}];
         uniform vec4 uCutB[${MAX_CUTS}];
+        #if ${isCap}
+        uniform float uCapY;
+        uniform float uCapT0;
+        uniform mat3 uCapRot;
+        varying float vLayer;
+        varying float vBelow;
+        varying float vIn;
+        #endif
         ${NOISE_GLSL}
         ${PERTURB_GLSL}
         vec2 gWarp(vec2 p) { return p + vec2(gFbm(p * 0.21 + 1.7), gFbm(p * 0.21 + 9.2)) * 2.4; }
@@ -195,11 +241,33 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
             heat = max(heat, h);
           }
           return heat;
+        }
+        // the Horizon Cut's line racing across every slope the plane passes through, and the flat stumps it leaves
+        float sliceHeat(vec3 P) {
+          float heat = 0.0;
+          float w = max(4.0, fwidth(P.y) * 2.0);
+          for (int i = 0; i < ${MAX_SLICES}; i++) {
+            vec4 B = uSliceB[i];
+            if (B.y < 0.5) continue;
+            vec4 A = uSliceA[i];
+            float age = max(0.0, uClock - B.x);
+            float d = length(P.xz - A.xy);
+            float reach = min(A.z, age * ${SLICE_SPEED.toFixed(1)});
+            if (d > reach) continue;
+            float band = exp(-abs(P.y - A.w) / w);
+            float front = 1.0 + 2.0 * exp(-(reach - d) / 150.0) * step(reach, A.z - 1.0);
+            heat = max(heat, band * (exp(-age / 45.0) * 1.0 + exp(-age / 2.0) * 0.7) * front);
+          }
+          return heat;
         }`,
       )
       .replace(
         '#include <map_fragment>',
         /* glsl */ `
+        #if ${isCap}
+          // only this piece's own ground, and only above the cut: where the surface dips below the plane it is open air
+          if (vIn < 0.5 || vBelow > 0.0) discard;
+        #endif
         vec2 gp = vGPos.xz;
         // fade fine detail with distance so the far plain doesn't shimmer
         float lod = clamp(length(fwidth(gp)) * 1.5 - 0.15, 0.0, 1.0);
@@ -219,9 +287,12 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
         vec2 wob = (vec2(gNoise(gp * 0.9), gNoise(gp * 0.9 + 4.1)) - 0.5) * uTexel * 1.6;
         float burn = texture2D(uBurn, suv + wob).a * inside;
         float heat = texture2D(uGlow, suv + wob).r * inside;
-        #if ${isFar}
+        #if ${isCap}
           float pE = 3.0;
-          vec3 tN = normalize(vec3(farH(gp - vec2(pE, 0.0), 4) - farH(gp + vec2(pE, 0.0), 4), 2.0 * pE, farH(gp - vec2(0.0, pE), 4) - farH(gp + vec2(0.0, pE), 4)));
+          vec3 tN = vLayer > 0.5 ? vec3(0.0, 1.0, 0.0) : normalize(vec3(farH(gp - vec2(pE, 0.0), 4) - farH(gp + vec2(pE, 0.0), 4), 2.0 * pE, farH(gp - vec2(0.0, pE), 4) - farH(gp + vec2(0.0, pE), 4)));
+        #elif ${isFar}
+          float pE = 3.0;
+          vec3 tN = normalize(vec3(farHC(gp - vec2(pE, 0.0), 4) - farHC(gp + vec2(pE, 0.0), 4), 2.0 * pE, farHC(gp - vec2(0.0, pE), 4) - farHC(gp + vec2(0.0, pE), 4)));
         #else
           vec3 tN = normalize(vec3(
             texture2D(uHeight, suv - vec2(uTexel, 0.0)).r - texture2D(uHeight, suv + vec2(uTexel, 0.0)).r,
@@ -231,7 +302,7 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
         float cliff = smoothstep(0.1, 0.36, 1.0 - tN.y);
         float carved = clamp(-vGPos.y, 0.0, 60.0);
         float cutDeep;
-        float cutK = cutHeat(vGPos, cutDeep);
+        float cutK = max(cutHeat(vGPos, cutDeep), sliceHeat(vGPos));
         // rims and ejecta: pale crushed rock and ash
         alb = mix(alb, ashCol * 1.3, smoothstep(0.1, 1.2, vGPos.y) * 0.55 * (1.0 - smoothstep(6.0, 30.0, vGPos.y)));
         alb *= 1.0 - burn * 0.82;
@@ -267,11 +338,21 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
         }
         // freshly cut faces are scorched black
         alb *= 1.0 - 0.6 * smoothstep(0.05, 0.5, cutK);
+        #if ${isCap}
+          // where a ridge broke apart the piece shows its inside: dark rock, still hot
+          if (!gl_FrontFacing) alb = vec3(0.025, 0.017, 0.015);
+        #endif
         diffuseColor.rgb *= alb;`,
       )
       .replace(
         '#include <normal_fragment_maps>',
-        /* glsl */ `normal = normalize((viewMatrix * vec4(tN, 0.0)).xyz);
+        /* glsl */ `
+        #if ${isCap}
+          // lit as it tumbles: the rock's normal turns with the cap (the inside of a broken edge faces the other way)
+          normal = normalize((viewMatrix * vec4(uCapRot * (vLayer > 0.5 ? vec3(0.0, -1.0, 0.0) : tN), 0.0)).xyz) * (gl_FrontFacing ? 1.0 : -1.0);
+        #else
+          normal = normalize((viewMatrix * vec4(tN, 0.0)).xyz);
+        #endif
         normal = sdPerturb(-vViewPosition, normal, vec2(dFdx(gh), dFdy(gh)) * 2.2, faceDirection);`,
       )
       .replace(
@@ -293,7 +374,14 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
         }
         // the floors of the deepest wounds pool lava along their cracks
         float wound = max(smoothstep(6.0, 13.0, carved), cutDeep) * smoothstep(0.45, 0.75, gNoise(gp * 0.06 + 7.0)) * (1.0 - cliff);
-        totalEmissiveRadiance += vec3(1.0, 0.22, 0.03) * crack * wound * 0.45 * pulse * uEmber;`,
+        totalEmissiveRadiance += vec3(1.0, 0.22, 0.03) * crack * wound * 0.45 * pulse * uEmber;
+        #if ${isCap}
+          // the cap's underside is the cut itself: molten, cooling as it falls
+          if (vLayer > 0.5 || !gl_FrontFacing) {
+            float ck = (vLayer > 0.5 ? 0.35 : 0.15) + 0.9 * exp(-max(0.0, uClock - uCapT0) / 30.0);
+            totalEmissiveRadiance += molten(vLayer > 0.5 ? gp : vec2(gp.x + gp.y, vGPos.y * 1.3), ck) * 1.3 + vec3(0.4, 0.04, 0.006) * ck;
+          }
+        #endif`,
       )
       .replace(
         '#include <fog_fragment>',

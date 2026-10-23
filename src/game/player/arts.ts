@@ -8,6 +8,7 @@ import type { Game, System } from '../Game'
 import { FIRE, GOLD, WHITE_GOLD } from '../fx/particleFx'
 import { bladeFrame, sideOf, SwordFx } from '../fx/swordFx'
 import { newHitId } from '../types'
+import { SLICE_SPEED } from '../world/farField'
 import { eclipsePoint, SUN_DIR } from '../world/layout'
 
 /** The Iai, in hero seconds into the move: the blade is out, back in its scabbard (everything falls apart), the move is over. */
@@ -48,6 +49,14 @@ export const MOON_ASSIST = (30 * Math.PI) / 180
 /** Aim within this heading of the eclipse to cut it. */
 export const ECLIPSE_AIM = (15 * Math.PI) / 180
 const MOON_R = 95
+/** The Horizon Cut: its price, its cooldown (hero s), its reach, and the lowest and highest it will cut. */
+export const HORIZON_COST = 30
+export const HORIZON_CD = 3
+export const HORIZON_RANGE = 4200
+export const HORIZON_MIN = 40
+export const HORIZON_MAX = 1100
+/** The draw happens at IAI_DRAW; the pieces are let go this long after it. */
+const HORIZON_SHEATHE = 0.55
 const TARGET_DMG = 8000
 const ECLIPSE_DMG = 9000
 
@@ -89,6 +98,23 @@ export function eclipseHeading(dir: THREE.Vector3) {
 /** The Worldsplitter's blade length at charge k. */
 export const bladeLength = (k: number) => 5 + BLADE_MAX * Math.pow(clamp(k, 0, 1), 2.2)
 
+/**
+ * Where the Horizon Cut goes: the height at which the aim from `origin` along
+ * `dir` first meets the ground (marched out to the Horizon Cut's reach), or, if
+ * it meets nothing, a slant up into the sky from the hero's chest. Clamped to
+ * HORIZON_MIN..HORIZON_MAX.
+ */
+export function horizonHeight(origin: THREE.Vector3, dir: THREE.Vector3, heightAt: (x: number, z: number) => number, chestY: number) {
+  for (let t = 40; t <= HORIZON_RANGE; t += 15) {
+    const x = origin.x + dir.x * t
+    const y = origin.y + dir.y * t
+    const z = origin.z + dir.z * t
+    if (y < heightAt(x, z)) return { y: clamp(y, HORIZON_MIN, HORIZON_MAX), hit: new THREE.Vector3(x, y, z) }
+  }
+  const l = Math.max(1e-3, Math.hypot(dir.x, dir.z))
+  return { y: clamp(chestY + (dir.y / l) * 1500, HORIZON_MIN, HORIZON_MAX), hit: null }
+}
+
 /** Distance from the line (xz) through `a` along unit `dir` to p, and how far along it p lies. */
 export function lineOffset(a: THREE.Vector3, dir: THREE.Vector3, p: THREE.Vector3) {
   const dx = p.x - a.x
@@ -102,6 +128,10 @@ interface Pending {
   t: number
   /** Reach of the cut (m). */
   r: number
+  /** Half-thickness of the cut (m). */
+  h: number
+  /** For a Horizon Cut: how many peaks it took off (they are let go on the click). */
+  peaks?: number
   c: THREE.Vector3
   n: THREE.Vector3
   disc: number
@@ -181,7 +211,7 @@ export class SwordArts implements System {
       if (_b.length() < IAI_RANGE + MOON_R && headingGap(_b, aim) < MOON_ASSIST) discNormal(_b.normalize(), n, 1, 0, 1.3)
     }
     const disc = this.fx.disc(c, n, IAI_VIS, 0.16, 0.6, 1.4)
-    this.pending.push({ t: IAI_SHEATHE - IAI_DRAW, r: IAI_RANGE, c, n, disc })
+    this.pending.push({ t: IAI_SHEATHE - IAI_DRAW, r: IAI_RANGE, h: IAI_HALF, c, n, disc })
     this.cd = IAI_CD
     // the steel flashes once across the front, a ring of pressure in the plane of the cut
     const fwd = _w.set(aim.x, 0, aim.z)
@@ -224,7 +254,7 @@ export class SwordArts implements System {
   private sheathe(s: Pending) {
     const g = this.g
     const fx = g.fx
-    const shape: Shape = { t: 'disc', c: s.c, n: s.n, r: s.r, h: IAI_HALF }
+    const shape: Shape = { t: 'disc', c: s.c, n: s.n, r: s.r, h: s.h }
     // the cut lines show on everything caught in the plane before it falls
     const pts = g.enemyPoints
     const order: number[] = []
@@ -251,6 +281,7 @@ export class SwordArts implements System {
       if (shapeHitsSphere(shape, _p.x, _p.y, _p.z, t.radius)) t.struck(TARGET_DMG, _p, 'iai')
     }
     this.fx.flashDisc(s.disc)
+    if (s.peaks !== undefined) return this.horizonFall(s, n)
     // sparks thrown out flat along the plane, the air snapping shut behind the cut
     fx.plasmaRing(s.c, s.n, 70, Math.round(900 * g.q), WHITE_GOLD, { expand: 0.5, fill: 0.85, thick: 0.4, life: 0.9, size: 0.05, stretch: 0.05, heat: 2.5 })
     this.fx.ring(s.c, s.n, 4, 160, 0.7, { thick: 0.04, alpha: 0.7, color: '#fff0d8' })
@@ -274,8 +305,108 @@ export class SwordArts implements System {
     const c = this.g.player.chestPos(new THREE.Vector3())
     const n = new THREE.Vector3(0, 1, 0)
     const disc = this.fx.disc(c, n, COUNTER_RANGE * 1.6, 0.12, 0.45, 0.4)
-    this.pending.push({ t: 0.16, r: COUNTER_RANGE, c, n, disc })
+    this.pending.push({ t: 0.16, r: COUNTER_RANGE, h: IAI_HALF, c, n, disc })
     this.fx.ring(c, n, 1, 40, 0.3, { thick: 0.05, alpha: 0.8, color: '#ffe8c8' })
+  }
+
+  // -------------------------------------------------------------------------
+  // The Horizon Cut
+  // -------------------------------------------------------------------------
+
+  /** Until the Horizon Cut can be drawn again (hero s). */
+  hcd = 0
+
+  get horizonReady() {
+    return this.hcd <= 0 && this.g.player.divinity >= HORIZON_COST
+  }
+
+  /**
+   * The draw: one level stroke at the height the hero looks at, out to four
+   * kilometres. Every peak standing above it is cut off where it stands.
+   */
+  horizonCut() {
+    const g = this.g
+    const p = g.player
+    p.divinity = Math.max(0, p.divinity - HORIZON_COST)
+    this.hcd = HORIZON_CD
+    const chest = p.chestPos(new THREE.Vector3())
+    const aim = horizonHeight(g.cam.aimOrigin, g.cam.aimDir, (x, z) => g.far.heightAt(x, z), chest.y)
+    const c = new THREE.Vector3(p.pos.x, aim.y, p.pos.z)
+    const n = new THREE.Vector3(0, 1, 0)
+    const peaks = g.peaks.slice(c.x, c.z, HORIZON_RANGE, aim.y)
+    const disc = this.fx.disc(c, n, HORIZON_RANGE, HORIZON_RANGE / SLICE_SPEED, 1.4, 3)
+    this.pending.push({ t: HORIZON_SHEATHE, r: HORIZON_RANGE, h: 30, c, n, disc, peaks })
+    // the stroke: the blade flashes, the frame slides apart along the far line of the cut
+    const fwd = _w.set(g.cam.aimDir.x, 0, g.cam.aimDir.z)
+    if (fwd.lengthSq() < 1e-6) fwd.set(Math.sin(p.yaw), 0, Math.cos(p.yaw))
+    fwd.normalize()
+    _p.copy(chest).addScaledVector(fwd, 1.2)
+    g.fx.flare(_p, 3, '#fff4dc', 0.18, 0.9)
+    g.fx.sparkShower(_p, sideOf(fwd, _s).addScaledVector(fwd, 0.6).normalize(), 160, 60, 0.5, WHITE_GOLD, { life: 0.4, size: 0.04, drag: 2.2, stretch: 0.035, heat: 3 })
+    this.fx.ring(chest, fwd, 1, 26, 0.4, { thick: 0.05, alpha: 0.8, color: '#ffe8c8' })
+    sideOf(fwd, _s)
+    _a.copy(c).addScaledVector(fwd, 2500).addScaledVector(_s, 2000)
+    _b.copy(c).addScaledVector(fwd, 2500).addScaledVector(_s, -2000)
+    g.post.cutWorld(_a, _b, 0.04, 1.2, HORIZON_SHEATHE + 0.1, g.camera)
+    g.post.flashTo(0.05, '#fff6e8', 6)
+    g.post.kickChroma(0.5)
+    g.post.speedLines(0.6, 0.2)
+    g.sky.flash(fwd, 0.5, '#ffe2b8')
+    g.time.freeze(0.06)
+    g.time.divine(1.2, 0.4)
+    g.cam.addTrauma(0.25)
+    g.rumble(0.4, 0.6, 160)
+    audio.iaiDraw()
+    audio.skyRip()
+    this.horizonShot(aim.hit, aim.y, fwd)
+    if (peaks === 0) useUI.getState().stamp('NOTHING STANDS THAT TALL', 'warn')
+  }
+
+  /** The click: the peaks let go and start to slide; anything flying in the plane falls apart. */
+  private horizonFall(s: Pending, hits: number) {
+    const g = this.g
+    const p = g.player
+    g.peaks.release(p.pos.x, p.pos.z)
+    audio.sheathe(0)
+    audio.cut(s.c, true)
+    audio.rumble(1, 6)
+    audio.duck(0.6, 3)
+    g.post.impactFrames([2, 0], 1 / 24)
+    g.post.kickChroma(0.6)
+    g.cam.addTrauma(0.35)
+    g.rumble(0.6, 0.8, 600)
+    g.sky.flash(UP, 0.7, '#ffe2b8')
+    g.score.feat('horizon', clamp((s.peaks ?? 0) / 8, 0, 1))
+    const k = s.peaks ?? 0
+    if (k > 0) useUI.getState().stamp(k === 1 ? 'A MOUNTAIN, CUT DOWN' : `${k} PEAKS, CUT DOWN`, 'divine')
+    void hits
+  }
+
+  /** Back over the hero's shoulder and up: the cut line racing across the range, the peaks sliding off. Any input skips it. */
+  private horizonShot(hit: THREE.Vector3 | null, y: number, fwd: THREE.Vector3) {
+    const g = this.g
+    if (g.cam.cinematic) return
+    const p0 = g.player.pos.clone()
+    const flat = fwd.clone()
+    const side = sideOf(flat, new THREE.Vector3())
+    const look0 = hit ? hit.clone() : p0.clone().addScaledVector(flat, 1800).setY(y)
+    look0.y = Math.max(look0.y, y * 0.9)
+    this.shotT = 0
+    g.cam.play({
+      dur: 6,
+      blendIn: 0.5,
+      blendOut: 1,
+      frame: (t, pos, look) => {
+        this.shotLive = true
+        this.shotT = t
+        const e = smoothstep(0.1, 5.5, t)
+        pos.copy(p0).addScaledVector(flat, -(8 + 50 * e)).addScaledVector(side, 6 + 24 * e)
+        pos.y = p0.y + 4 + 60 * e
+        look.copy(look0)
+        look.y -= 60 * e
+        return 46 - 6 * e
+      },
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -618,6 +749,7 @@ export class SwordArts implements System {
   /** Every hero frame: cooldowns, the pending sheathe, and letting any input cut the release cinematic short. */
   tick(dt: number, f: InputFrame, enabled: boolean) {
     this.cd -= dt
+    this.hcd -= dt
     this.counterT -= dt
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const s = this.pending[i]
@@ -662,6 +794,7 @@ export class SwordArts implements System {
   reset() {
     this.cancel()
     this.cd = 0
+    this.hcd = 0
     this.counterT = 0
     this.charge = 0
     this.full = false

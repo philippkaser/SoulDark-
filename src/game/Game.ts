@@ -24,6 +24,7 @@ import { Props } from './world/props'
 import { ScorchMap } from './world/scorch'
 import { Sky } from './world/sky'
 import { FarField, type CutOpts } from './world/farField'
+import { Peaks } from './world/peaks'
 import { Terrain } from './world/terrain'
 
 /** A gameplay system that plugs into the frame loop. */
@@ -87,7 +88,9 @@ export class Game {
   private windGust = new THREE.Vector3()
   readonly sun: THREE.DirectionalLight
   readonly fill: THREE.HemisphereLight
-  private ground: THREE.Object3D
+  readonly ground: THREE.Object3D
+  /** Mountaintops the Horizon Cut took off, sliding and falling. */
+  readonly peaks: Peaks
   private systems: System[] = []
   private damageables: Damageable[] = []
   mode: GameMode = 'title'
@@ -131,6 +134,7 @@ export class Game {
     this.slashes = new Slashes(this)
     this.props = new Props(this)
     this.ground = buildGround(this.scorch, this.terrain, this.far, quality)
+    this.peaks = new Peaks(this)
     // everything that touches the ground finds the terrain
     this.fx.debris.ground = this.terrain
     this.fx.ground = this.terrain
@@ -168,7 +172,7 @@ export class Game {
     const rimBack = new THREE.DirectionalLight('#7f8cff', 0.5)
     rimBack.position.set(40, 30, 80)
 
-    this.root.add(this.sky.mesh, this.ground, this.props.root, this.fx.root, this.slicer.root, this.slashes.root)
+    this.root.add(this.sky.mesh, this.ground, this.peaks.root, this.props.root, this.fx.root, this.slicer.root, this.slashes.root)
     this.root.add(this.player.model.container, this.sun, this.sun.target, this.fill, rimBack)
     this.root.add(this.aura.root, this.levitate.root, this.lightning.root, this.feel.root)
     this.damageables.push(this.props)
@@ -374,6 +378,7 @@ export class Game {
     this.post.reset()
     this.sky.reset()
     this.scorch.clear()
+    this.peaks.reset()
     this.far.reset()
     this.terrain.reset()
     this.fx.clear()
@@ -432,6 +437,7 @@ export class Game {
     this.slashes.update(pdt)
     for (const s of this.systems) s.update(wdt, rdt)
     this.slicer.update(wdt)
+    this.peaks.update(wdt)
     this.props.update(wdt, rdt)
     this.props.root.updateMatrixWorld()
     this.scorch.update(rdt)
