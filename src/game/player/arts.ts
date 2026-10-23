@@ -296,6 +296,8 @@ export class SwordArts implements System {
     }
     audio.sheathe(0)
     g.score.feat('iai', clamp(n / 30, 0, 1))
+    // a massacre in one stroke: whoever is left backs away
+    if (n > 20) g.forces?.horde.terrify(s.c.x, s.c.z, s.r + 200, 3)
   }
 
   /** A big perfect parry answers on its own: a level ring of steel through everything near, at most once a second. */
@@ -367,6 +369,7 @@ export class SwordArts implements System {
     const g = this.g
     const p = g.player
     g.peaks.release(p.pos.x, p.pos.z)
+    g.forces?.horde.terrify(p.pos.x, p.pos.z, 800, 5)
     audio.sheathe(0)
     audio.cut(s.c, true)
     audio.rumble(1, 6)
@@ -439,6 +442,7 @@ export class SwordArts implements System {
     this.bladeLen = bladeLength(k)
     this.bladePow = 0.35 + 0.65 * k
     g.aura.setPower(0.3 + k * 0.7)
+    g.sky.swirl(0.3 + k * 0.7)
     if (p.altitude < 8) g.levitate.setPower(k * 0.9, _p.set(p.pos.x + Math.sin(p.yaw) * 5, p.pos.y, p.pos.z + Math.cos(p.yaw) * 5), dt)
     g.cam.addTrauma(dt * (0.12 + k * k * 1.2))
     g.rumble(0.06 + k * k * 0.6, 0.1 + k * 0.4, 120)
@@ -491,6 +495,8 @@ export class SwordArts implements System {
       this.pulseT = 0.32 - k * 0.12
       const c = p.pos
       const r = 5 + k * 16
+      // the ranks lose their nerve
+      g.forces?.horde.terrify(c.x, c.z, 50 + k * 160, 1.2)
       g.damage({ t: 'ring', c, r0: 0, r1: r, h: c.y + 4 }, { id: newHitId(), kind: 'slam', dmg: 60, power: 8 + k * 18, origin: c, friendly: true })
       if (p.altitude < 3) {
         fx.ring(_p.copy(c).setY(c.y + 0.08), r * 1.2, '#ffe2b0', 0.45, { thick: 0.08, alpha: 0.6 + k * 0.4 })
@@ -608,6 +614,7 @@ export class SwordArts implements System {
     }
     this.tearGround(a, fwd, side)
     this.mountainBeat(a, fwd)
+    g.forces?.horde.terrify(a.x, a.z, 500, 5)
     // the hero's power is spent all at once
     this.bladeLen = BLADE_STRIKE
     this.bladeFade = 0.7

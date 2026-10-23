@@ -174,6 +174,9 @@ export class Arrows implements System {
     let landed = 0
     let reflected = 0
     let blocked = 0
+    let burned = 0
+    // at the top of his power the air around the hero is too hot for arrows
+    const burnR = pl.auraBurn
     const hitId = newHitId()
     let count = 0
     for (let i = 0; i < this.n; i++) {
@@ -201,6 +204,14 @@ export class Arrows implements System {
         if (this.fieldOpen > 0 && d < 9 && this.vel[k + 1] < 0) {
           this.reflect(i)
           reflected++
+        } else if (d < burnR && !pl.untouchable) {
+          this.st[i] = A.Free
+          if (burned++ < 24) {
+            _p.set(this.pos[k], this.pos[k + 1], this.pos[k + 2])
+            g.fx.gpu.emberDrift(_p, 10, 0.25, { rise: 1.2, burst: 2.5, life: 0.9, size: 0.06 })
+            g.fx.glow.spawn(_p, _d.set(this.vel[k] * 0.05, 1, this.vel[k + 2] * 0.05), [1, 0.6, 0.25], 0.9, 0.18, 0.25, 0, 0)
+          }
+          continue
         } else if (d < 1.0) {
           if (pl.untouchable) {
             /* passes through a flash-step */
@@ -249,6 +260,7 @@ export class Arrows implements System {
       pl.defend('small', _p.set(chest.x, chest.y + 8, chest.z - 6))
       if (reflected > 20) g.score.log(`Arrowstorm returned ×${reflected}`, reflected * 10)
     }
+    if (burned > 0) audio.sizzle(Math.min(1, burned / 20))
     if (blocked > 0) {
       g.fx.spark(chest, null, Math.min(30, blocked * 3), 7)
       audio.block()

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { audio, type LoopHandle } from '../../audio/audio'
 import { clamp, damp, turnToward, wrapAngle } from '../../engine/math'
 import { Avatar } from '../../engine/rig/avatar'
+import { shapeHitsSphere, type Shape } from '../../engine/geom'
 import type { InputFrame } from '../../input/input'
 import { useUI } from '../../state/store'
 import { slashHitstop } from '../feel'
@@ -33,6 +34,7 @@ export type PState =
   | 'wcharge'
   | 'wsplit'
   | 'hcut'
+  | 'chiburi'
   | 'cine'
   | 'dead'
   | 'victory'
@@ -107,6 +109,18 @@ export class Player {
   private counterT = 0
   /** This leap has been boosted into a Sky Leap. */
   private skyLeaped = false
+  /** The flash-step's path so far, and the cuts along finished ones waiting to land. */
+  private dashPath: THREE.Vector3[] = []
+  private dashCuts: Array<{ t: number; pts: THREE.Vector3[]; dir: THREE.Vector3 }> = []
+  /** Footfalls: metres since the last print, and which foot. */
+  private stepDist = 0
+  private stepSide = 1
+  /** Kills in the last moments (decaying), the soldiers counted so far, and whether a flourish is owed. */
+  private killBurst = 0
+  private lastKills = 0
+  private flourishOwed = false
+  private flourishCd = 0
+  private idleT = 0
 
   constructor(game: Game) {
     this.game = game
@@ -141,10 +155,24 @@ export class Player {
     this.power.reset()
     this.arts.cancel()
     this.arts.cd = 0
+    this.dashCuts.length = 0
+    this.dashPath = []
+    this.killBurst = 0
+    this.lastKills = 0
+    this.flourishOwed = false
+    this.flourishCd = 0
   }
 
   get alive() {
     return this.state !== 'dead'
+  }
+
+  /** How far out the hero's aura burns arrows to nothing: while gathering power, and at the top style ranks. */
+  get auraBurn() {
+    const s = this.state
+    if (s === 'charge' || s === 'wcharge' || s === 'judgment' || s === 'hcut') return 9
+    const r = this.game.score.rank
+    return r >= 6 ? 8 : r >= 5 ? 6 : r >= 4 ? 3.5 : 0
   }
 
   /** Height above the terrain under the hero. */
@@ -326,6 +354,20 @@ export class Player {
     this.parryLag -= dt
     this.dashCd -= dt
     this.counterT -= dt
+    this.flourishCd -= dt
+    // a massacre leaves the hero owing his blade a flick
+    const soldiers = g.score.tally.soldiers
+    this.killBurst = this.killBurst * Math.exp(-dt / 1.5) + Math.max(0, soldiers - this.lastKills)
+    this.lastKills = soldiers
+    if (this.killBurst > 25 && this.flourishCd <= 0) this.flourishOwed = true
+    for (let i = this.dashCuts.length - 1; i >= 0; i--) {
+      const c = this.dashCuts[i]
+      c.t -= dt
+      if (c.t <= 0) {
+        this.dashCuts.splice(i, 1)
+        this.landDashCut(c.pts, c.dir)
+      }
+    }
     this.invuln -= dt
     this.lastHurt += dt
     if (this.lastHurt > 3 && this.alive && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + 45 * dt)
@@ -350,7 +392,7 @@ export class Player {
 
     // ---- universal cancels: the hero is never stuck
     const cancellable =
-      s === 'free' || s === 'air' || s === 'guard' || s === 'land' || ((s === 'slash' || s === 'airslash') && this.fired) || (s === 'iai' && this.fired && this.t > 0.16) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12) || (s === 'wsplit' && this.t > 0.9)
+      s === 'free' || s === 'air' || s === 'guard' || s === 'land' || s === 'chiburi' || ((s === 'slash' || s === 'airslash') && this.fired) || (s === 'iai' && this.fired && this.t > 0.16) || (s === 'cleave' && this.t > 0.3) || (s === 'parry' && this.parryT > 0.12) || (s === 'wsplit' && this.t > 0.9)
     this.arts.tick(dt, f, enabled)
     if (cancellable || s === 'charge' || s === 'catch' || s === 'wcharge') {
       if (want(f.parry) && this.parryLag <= 0) return this.startParry()
@@ -378,8 +420,24 @@ export class Player {
         if (want(f.slash)) this.startSlash(1)
         else if (want(f.jump)) this.leap()
         else if (want(f.heavy)) this.startCharge()
+        else if (!guard) {
+          // standing still after a massacre: the blade is flicked clean
+          this.idleT = mag < 0.1 && this.grounded && this.speed < 1 ? this.idleT + dt : 0
+          if (this.flourishOwed && this.idleT > 0.45) {
+            this.flourishOwed = false
+            this.flourishCd = 8
+            this.enter('chiburi')
+          }
+        }
         break
       }
+      case 'chiburi':
+        this.locomote(dt, mx, mz, mag, RUN)
+        if (!this.fired && this.t >= 0.2) this.flickBlade()
+        if (mag > 0.3 || this.t >= 0.8) this.enter('free')
+        else if (want(f.slash)) this.startSlash(1)
+        else if (want(f.jump)) this.leap()
+        break
       case 'air': {
         // jump held through the start of the leap: the Sky Leap
         if (!this.skyLeaped && this.leapt && enabled && f.jumpHeld && this.t > 0.14 && this.t < 0.45 && this.vel.y > 0) this.skyLeap()
@@ -528,6 +586,7 @@ export class Player {
     }
 
     if (this.state !== 'parry') this.parriedTier = -1
+    this.footfalls(dt)
     this.constrain()
     this.animate(dt)
     this.arts.place(dt)
@@ -601,6 +660,53 @@ export class Player {
       this.pos.x *= ARENA_HARD / d
       this.pos.z *= ARENA_HARD / d
     }
+  }
+
+  /**
+   * At the top of his power the ground cannot take his weight: each footfall
+   * at a run cracks it and leaves a glowing print that cools.
+   */
+  private footfalls(dt: number) {
+    const g = this.game
+    if (this.state !== 'free' || !this.grounded || this.speed < 7) return
+    if (g.score.rank < 3 && this.divinity < 100) return
+    this.stepDist += this.speed * dt
+    if (this.stepDist < 2.3) return
+    this.stepDist = 0
+    this.stepSide = -this.stepSide
+    const fx = Math.sin(this.yaw)
+    const fz = Math.cos(this.yaw)
+    const x = this.pos.x + fz * 0.17 * this.stepSide
+    const z = this.pos.z - fx * 0.17 * this.stepSide
+    const y = g.terrain.heightAt(x, z)
+    const hot = g.score.rank >= 5 ? 0.9 : 0.55
+    g.scorch.crater(x, z, 0.55, hot)
+    _v.set(x, y + 0.08, z)
+    g.fx.gpu.emberDrift(_v, 6, 0.2, { rise: 0.8, burst: 1.5, life: 0.9, size: 0.05 })
+    g.fx.gpu.dustMotes(_v, 6, 0.3, { out: 1.5, up: 0.6, size: 0.18, life: 0.8 })
+    if (g.score.rank >= 6) g.fx.ring(_v, 1.6, '#ffd8a0', 0.25, { thick: 0.2, alpha: 0.6 })
+  }
+
+  /** The flourish: the blade snapped down and to the side, molten drops flung off it in an arc onto the ground. */
+  private flickBlade() {
+    const g = this.game
+    this.fired = true
+    this.model.swordTip.getWorldPosition(_v)
+    const side = _w.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw))
+    _dir.copy(side).multiplyScalar(0.8).setY(-0.6).normalize()
+    g.fx.sparkShower(_v, _dir, 70, 16, 0.35, FIRE, { life: 1.1, size: 0.06, gravity: 22, drag: 0.6, stretch: 0.02, heat: 2.5 })
+    g.fx.gpu.emberDrift(_v, 20, 0.3, { rise: 0.4, burst: 2, life: 1.4, size: 0.07 })
+    // the drops land in a little arc of scorch marks beside him
+    for (let i = 0; i < 5; i++) {
+      const d = 1.2 + i * 0.45
+      const a = (i - 2) * 0.12
+      const x = this.pos.x + side.x * d * Math.cos(a) + Math.sin(this.yaw) * d * Math.sin(a)
+      const z = this.pos.z + side.z * d * Math.cos(a) + Math.cos(this.yaw) * d * Math.sin(a)
+      g.fx.after(0.25 + i * 0.03, () => g.scorch.crater(x, z, 0.3, 0.8))
+    }
+    g.fx.ring(_w.copy(this.pos).setY(this.pos.y + 0.06), 3.5, '#ffe2b8', 0.35, { thick: 0.12, alpha: 0.6 })
+    audio.chiburi()
+    g.rumble(0.15, 0.4, 60)
   }
 
   /** Did the hero leap into the current 'air' state (rather than fall or step off something)? */
@@ -719,6 +825,8 @@ export class Player {
     const k = this.charge
     this.power.charge(k, dt)
     this.chargeSnd?.set(k)
+    g.sky.swirl(k * 0.6)
+    if (k > 0.4) g.forces?.horde.terrify(this.pos.x, this.pos.z, 30 + k * 100, 0.8)
     this.model.energyU.uLen.value = 2 + k * k * 70
     this.model.energyU.uPower.value = 0.4 + k * 0.6
     g.cam.addTrauma(dt * (0.2 + k * 1.2))
@@ -970,6 +1078,7 @@ export class Player {
     g.rumble(1, 1, 700)
     audio.nukeShock()
     audio.duck(0.6, 2)
+    g.forces?.horde.terrify(p.x, p.z, 260, 3.5)
     useUI.getState().stamp('METEOR FALL', 'divine')
   }
 
@@ -984,6 +1093,7 @@ export class Player {
     }
     this.dashDir.set(mx, 0, mz).normalize()
     this.yaw = Math.atan2(mx, mz)
+    this.dashPath = [this.pos.clone().setY(this.pos.y + 1)]
     this.dashCd = 0.32
     this.invuln = 0.28
     this.ghostTimer = 0
@@ -1005,12 +1115,50 @@ export class Player {
       g.fx.afterimage('#ffc070', 0.3, 0.8)
     }
     g.feel.dashStep(prev, this.pos, this.dashDir)
-    // flash-step: everything in the path is cut
-    g.damage({ t: 'capsule', a: prev.setY(1), b: _v.copy(this.pos).setY(1), r: 1.6 }, { id: newHitId(), kind: 'dash', dmg: 200, power: 14, origin: this.pos, dir: this.dashDir, friendly: true })
+    // flash-step: nothing it passes through knows it has been cut until a beat after it stops
+    this.dashPath.push(this.pos.clone().setY(this.pos.y + 1))
     if (this.t >= 0.16) {
+      if (this.dashPath.length > 1) this.dashCuts.push({ t: 0.3, pts: this.dashPath, dir: this.dashDir.clone() })
+      this.dashPath = []
       g.feel.dashEnd(this.chestPos(_v), this.dashDir)
       this.vel.multiplyScalar(0.12)
       this.enter(this.grounded ? 'free' : 'air')
+    }
+  }
+
+  /**
+   * The beat after a flash-step: cut lines flare across everything it passed
+   * through, the guard clicks home, and they all fall apart at once.
+   */
+  private landDashCut(pts: THREE.Vector3[], dir: THREE.Vector3) {
+    const g = this.game
+    const shapes: Shape[] = []
+    for (let i = 1; i < pts.length; i++) shapes.push({ t: 'capsule', a: pts[i - 1], b: pts[i], r: 3.4 })
+    // the cut lines: one slanted stroke across each victim
+    const enemies = g.enemyPoints
+    let shown = 0
+    const side = _w.set(dir.z, 0, -dir.x)
+    for (const q of enemies) {
+      if (shown >= 40 * g.q) break
+      if (!shapes.some((s) => shapeHitsSphere(s, q.x, q.y + 1, q.z, 0.8))) continue
+      const tilt = (Math.random() - 0.5) * 1.4
+      _v.copy(side).multiplyScalar(Math.cos(tilt) * 1.3).setY(Math.sin(tilt) * 1.3)
+      g.fx.streak(_dir.copy(q).setY(q.y + 1.1).sub(_v), new THREE.Vector3().copy(q).setY(q.y + 1.1).add(_v), 0.1, '#fff0d0', 0.28)
+      shown++
+    }
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(dir.z, 0.35, -dir.x).normalize(), pts[0])
+    const id = newHitId()
+    let n = 0
+    for (const s of shapes) n += g.damage(s, { id, kind: 'dash', dmg: 900, power: 9, origin: pts[0], dir, plane, friendly: true })
+    for (const s of shapes) g.cutProjectiles(s)
+    audio.sheathe(0)
+    if (n > 0) {
+      audio.cut(pts[pts.length - 1], n > 8)
+      g.time.freeze(0.04 + Math.min(0.08, n * 0.004))
+      g.cam.addTrauma(0.12 + Math.min(0.3, n * 0.01))
+      g.post.kickChroma(0.4)
+      g.rumble(0.3 + Math.min(0.5, n * 0.02), 0.6, 100 + Math.min(200, n * 6))
+      if (n > 15) g.post.impactFrames([2, 0], 1 / 30)
     }
   }
 
@@ -1135,6 +1283,8 @@ export class Player {
       case 'iai':
       case 'hcut':
         return 'iaiDraw'
+      case 'chiburi':
+        return 'chiburi'
       case 'wcharge':
         return 'charge'
       case 'wsplit':

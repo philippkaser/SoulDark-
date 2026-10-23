@@ -195,7 +195,10 @@ function Help() {
         <b>F</b> Iai · hold: Worldsplitter (50 Divinity)
       </div>
       <div>
-        <b>Shift</b> flash-step · <b>Space</b> leap / dive
+        <b>R</b> Horizon Cut (30 Divinity)
+      </div>
+      <div>
+        <b>Shift</b> flash-step · <b>Space</b> leap (hold: Sky Leap) / dive
       </div>
       <div>
         <b>Q</b> Judgment (Divinity full)

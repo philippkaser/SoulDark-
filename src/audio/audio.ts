@@ -451,6 +451,24 @@ class AudioEngine {
     for (let i = 0; i < 20; i++) this.burst(o, t + 0.1 + Math.random() * 1.6, 0.06, 'bandpass', rnd(800, 2600), 500, 0.18, 2)
   }
 
+  /** Arrows burning up in the hero's aura: a hiss and a few crackles. */
+  sizzle(k: number) {
+    if (!this.ctx || !this.allow('sizzle', 0.12)) return
+    const o = this.out(undefined, 0.25)!
+    const t = this.ctx.currentTime
+    this.burst(o, t, 0.25 + k * 0.3, 'highpass', 3500, 6000, 0.12 + k * 0.2, 0.7, 0.01)
+    for (let i = 0; i < 2 + k * 6; i++) this.burst(o, t + Math.random() * 0.3, 0.02, 'bandpass', rnd(1500, 4000), 800, 0.1, 2)
+  }
+
+  /** The blade flicked clean: a whip of air and a thin ring. */
+  chiburi() {
+    if (!this.ctx) return
+    const o = this.out(undefined, 0.4)!
+    const t = this.ctx.currentTime
+    this.burst(o, t, 0.18, 'bandpass', 900, 3200, 0.35, 1.6, 0.03)
+    this.ring(o, t + 0.12, 2200, [1, 1.5, 2.3], 0.9, 0.05)
+  }
+
   /** The Iai's draw: steel singing out of the scabbard, the air split flat across the front. */
   iaiDraw() {
     if (!this.ctx) return

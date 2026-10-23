@@ -33,6 +33,8 @@ uniform vec2 uPartDir;
 uniform vec4 uPart;
 uniform vec2 uPartRing;
 uniform float uPartAge;
+uniform float uVortex;
+uniform float uSpin;
 varying vec3 vDir;
 
 float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -175,13 +177,30 @@ void main() {
 
   // clouds lit by the corona
   if (h > -0.05) {
-    vec2 cp = (d.xz / (h + 0.16) + pShift) * 1.4 + vec2(uTime * 0.01, uTime * 0.004);
+    // gathering power drags the deck into a spiral over the hero: inner turns faster, so arms wind up
+    vec2 q0 = d.xz / (h + 0.16);
+    float rv = length(q0);
+    if (uVortex > 0.001) {
+      float va = (uSpin * exp(-rv * 0.45) + 1.4 * log(rv + 0.25)) * uVortex;
+      float vc = cos(va);
+      float vs = sin(va);
+      q0 = mat2(vc, -vs, vs, vc) * q0;
+    }
+    vec2 cp = (q0 + pShift) * 1.4 + vec2(uTime * 0.01, uTime * 0.004);
     float cl = smoothstep(0.42, 0.85, fbm(cp));
     float streak = smoothstep(0.5, 0.9, fbm(vec2(cp.x * 0.35, cp.y * 3.0) + 4.0));
     cl = max(cl, streak * 0.6) * (1.0 - pClear);
     // the split: the shoved-aside deck piled thick, and the walls as dense rolling banks
     cl = max(cl, pComp * 0.85 * smoothstep(0.3, 0.7, fbm(cp * 1.25 + vec2(uPartAge * 0.03, 0.0)) + pComp * 0.3));
     cl = max(cl, pWall * smoothstep(0.2, 0.65, pRoll + pWall * 0.4));
+    // the spiral: heavy arms wound round a clear eye over the hero
+    float vArms = 0.0;
+    if (uVortex > 0.001) {
+      float th = atan(d.z, d.x);
+      float arms = 0.5 + 0.5 * sin(3.0 * th + 5.0 * log(rv + 0.2) - uSpin * 1.6);
+      vArms = smoothstep(0.45, 0.85, arms * (0.6 + 0.65 * fbm(cp * 1.3 + 2.0))) * smoothstep(0.12, 0.45, rv);
+      cl = mix(cl * (1.0 - smoothstep(0.3, 0.1, rv) * uVortex), vArms, uVortex * 0.85);
+    }
     float lit = exp(-ang * 2.6) * 1.6 + 0.06;
     vec3 cloudDark = mix(vec3(0.03, 0.012, 0.02), vec3(0.32, 0.36, 0.45), uDawn);
     vec3 cloudLit = mix(vec3(0.75, 0.22, 0.07), vec3(1.4, 0.95, 0.65), uDawn);
@@ -190,11 +209,14 @@ void main() {
     cc *= 1.0 - pComp * 0.5 * (1.0 - pWall);
     cc = mix(cc, cloudLit * (0.55 + 0.35 * pRoll) * (0.6 + uPart.w) * (0.5 + 0.5 * clamp(lit, 0.0, 1.0)), clamp(pWall * 1.3, 0.0, 1.0));
     float fade = smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.6, 0.97, h));
-    // the split's banks stay visible higher up, so the cut runs on overhead
-    fade = max(fade, smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.85, 0.99, h)) * max(pWall, pComp));
+    // the split's banks stay visible higher up, so the cut runs on overhead (and so does a vortex)
+    fade = max(fade, smoothstep(-0.05, 0.12, h) * (1.0 - smoothstep(0.85, 0.99, h)) * max(max(pWall, pComp), uVortex));
     // thin the cloud deck in front of the black disc so it stays a void
     fade *= 1.0 - 0.85 * smoothstep(0.02, -0.01, x) * (1.0 - uDawn);
     col = mix(col, cc + corona * lit * 0.12 * (1.0 - uDawn), cl * fade * 0.88);
+    // the eye of the vortex: light pouring down onto the hero, the arms' edges lit by it
+    col += vec3(1.5, 0.95, 0.45) * uVortex * exp(-rv * 6.0) * smoothstep(0.3, 0.95, h) * 1.4;
+    col += vec3(1.0, 0.5, 0.18) * uVortex * vArms * exp(-rv * 1.2) * 0.12;
   }
 
   // distant lightning and explosion flashes light the sky from a direction
@@ -282,12 +304,16 @@ export class Sky {
     uPart: { value: new THREE.Vector4() },
     uPartRing: { value: new THREE.Vector2() },
     uPartAge: { value: 0 },
+    uVortex: { value: 0 },
+    uSpin: { value: 0 },
   }
   readonly fogColor = FOG_COLOR.clone()
   private boltTimer = 4
   /** The cloud split: seconds since it began (< 0: none), and its shape. */
   private partAge = -1
   private partOpts: Required<PartOpts> = { ...PART_DEFAULTS }
+  /** How hard the clouds are being drawn into a spiral this frame (set by whatever gathers power). */
+  private swirlTarget = 0
 
   constructor() {
     const mat = new THREE.ShaderMaterial({
@@ -325,6 +351,11 @@ export class Sky {
     this.partAge = 0
   }
 
+  /** Gathering power drags the clouds into a vortex over the hero; call every frame it should hold (0..1). */
+  swirl(k: number) {
+    this.swirlTarget = Math.max(this.swirlTarget, k)
+  }
+
   /** Is the sky split open right now? */
   get parted() {
     return this.partAge >= 0
@@ -339,6 +370,8 @@ export class Sky {
     this.u.uDawn.value = 0
     this.u.uDoom.value = 0
     this.u.uShatter.value = 0
+    this.u.uVortex.value = 0
+    this.swirlTarget = 0
   }
 
   update(dt: number, camera: THREE.Camera, lightning: boolean) {
@@ -347,6 +380,11 @@ export class Sky {
     this.mesh.position.copy(camera.position)
     u.uFlash.value *= Math.exp(-dt * 2.5)
     u.uBolt.value *= Math.exp(-dt * 14)
+    // the vortex winds up quickly and unwinds slowly once the power is spent
+    const vt = this.swirlTarget
+    this.swirlTarget = 0
+    u.uVortex.value += (vt - u.uVortex.value) * (1 - Math.exp(-dt * (vt > u.uVortex.value ? 2.5 : 0.6)))
+    u.uSpin.value = u.uVortex.value < 0.005 ? 0 : u.uSpin.value + dt * (0.3 + u.uVortex.value * 2.2)
     if (lightning && u.uDawn.value < 0.5) {
       this.boltTimer -= dt
       if (this.boltTimer <= 0) {

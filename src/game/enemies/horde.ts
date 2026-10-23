@@ -88,6 +88,12 @@ export class Horde implements System {
   onLoose?: (fromX: number, fromZ: number, idx: number) => void
   private killsThisFrame = 0
   private killAt = new THREE.Vector3()
+  /** Terror: soldiers within terrorR of the point back away from the hero until terrorUntil (world clock). */
+  private clock = 0
+  private terrorX = 0
+  private terrorZ = 0
+  private terrorR = 0
+  private terrorUntil = -1
   /** Counts kills toward wave objectives. */
   killed = 0
   archersKilled = 0
@@ -136,6 +142,7 @@ export class Horde implements System {
   }
 
   reset() {
+    this.terrorUntil = -1
     this.st.fill(St.Free)
     this.free = []
     for (let i = this.capacity - 1; i >= 0; i--) this.free.push(i)
@@ -322,9 +329,30 @@ export class Horde implements System {
     }
   }
 
+  /**
+   * The ranks lose their nerve: everyone within `r` of (x, z) backs away from
+   * the hero, eyes on him, weapons down, for `dur` seconds.
+   */
+  terrify(x: number, z: number, r: number, dur: number) {
+    const live = this.clock < this.terrorUntil
+    if (live && r < this.terrorR && this.clock + dur < this.terrorUntil) return
+    this.terrorX = x
+    this.terrorZ = z
+    this.terrorR = live ? Math.max(r, this.terrorR) : r
+    this.terrorUntil = Math.max(this.terrorUntil, this.clock + dur)
+  }
+
+  private afraid(i: number) {
+    if (this.clock >= this.terrorUntil) return false
+    const dx = this.px[i] - this.terrorX
+    const dz = this.pz[i] - this.terrorZ
+    return dx * dx + dz * dz < this.terrorR * this.terrorR
+  }
+
   update(dt: number) {
     const g = this.game
     const pl = g.player
+    this.clock += dt
     const ppx = pl.pos.x
     const ppz = pl.pos.z
     const hold = g.ceasefire || !pl.alive
@@ -344,7 +372,7 @@ export class Horde implements System {
         for (let i = 0; i < this.capacity; i++) {
           if (this.drawing[i]) {
             this.drawing[i] = 0
-            if (this.st[i] === St.Fight && n < 220) {
+            if (this.st[i] === St.Fight && n < 220 && !this.afraid(i)) {
               this.onLoose?.(this.px[i], this.pz[i], i)
               n++
             }
@@ -390,6 +418,14 @@ export class Horde implements System {
         } else {
           speed = 0
           this.st[i] = St.Fight
+        }
+        // terror: they back away from him, still facing him
+        const fear = this.afraid(i)
+        if (fear) {
+          tx = -dx / d
+          tz = -dz / d
+          speed = (archer ? 4 : 6.5) * this.stride[i] * Math.min(1, 40 / Math.max(d, 1) + 0.4)
+          this.drawing[i] = 0
         }
         if (hold) speed = 0
         const x0 = this.px[i]
@@ -452,7 +488,7 @@ export class Horde implements System {
         const moving = Math.hypot(mvx, mvz)
         this.phase[i] += moving * dt * 3.2
         // stab the hero
-        if (!archer && d < 2.1 && !hold) {
+        if (!archer && d < 2.1 && !hold && !fear) {
           this.timer[i] += dt
           this.prog[i] = (this.timer[i] % 1.3) / 0.6
           const cyc = this.timer[i] % 1.3

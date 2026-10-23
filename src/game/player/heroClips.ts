@@ -187,6 +187,16 @@ const worldsplit: ClipDef = {
 const HERO_CLIPS: Record<string, ClipDef> = {
   iaiDraw,
   worldsplit,
+  // the blade flicked clean after a massacre: raised out to the right, snapped down, held
+  chiburi: {
+    dur: 0.8,
+    keys: [
+      [0.12, sw([-0.42, 0.3, 0.26], [-0.6, 0.72, 0.3], 'lr', { chestY: -0.3, spineX: 0.02 })],
+      [0.2, sw([-0.5, -0.14, 0.3], [-0.72, -0.62, 0.32], 'lr', { chestY: -0.38, rootY: -0.08, headY: -0.25 })],
+      [0.55, sw([-0.48, -0.16, 0.28], [-0.7, -0.64, 0.3], 'lr', { chestY: -0.34, rootY: -0.06, headY: -0.2 })],
+      [0.8, {}],
+    ],
+  },
   slash1,
   slash2,
   slash3,
