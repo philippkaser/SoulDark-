@@ -23,7 +23,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build |
 | `bun run typecheck` | TypeScript, no emit |
-| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the sword arts' cut disc and the sky split, vibration merging, kill cams, returned warheads clearing the ground) |
+| `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the sword arts' cut disc and the sky split, far-field slices and the Horizon Cut's aim, vibration merging, kill cams, returned warheads clearing the ground) |
 
 Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset. You can also change it in Settings.
 
@@ -36,8 +36,9 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 | Right click | LB / LT | **Parry**. Hold to guard, or to catch a beam on the blade |
 | E (hold) | RT | **Heaven Splitter**: charge, release, cut a canyon to the horizon |
 | F (hold for Worldsplitter) | R3 | **Iai**: draw and sheathe in one stroke; everything around you falls apart. Hold for the **Worldsplitter** (50 Divinity) |
-| Shift | B | Flash-step (untouchable, cuts through anything in the way) |
-| Space | A | Leap. Space again in the air: meteor dive |
+| R | L3 / D-pad up | **Horizon Cut** (30 Divinity): one level stroke at the height you look at; every peak above it comes off |
+| Shift | B | Flash-step: untouchable; a beat after it stops, everything it passed through falls apart |
+| Space | A | Leap (hold it: **Sky Leap**, straight up to ~65 m). Space again in the air: meteor dive, aimed at the crosshair from high up |
 | Q | Y | **Judgment**, when Divinity is full: time stops, the hero cuts everything in sight, time resumes |
 | Esc | Start | Pause |
 | H | | Toggle the controls overlay |
@@ -61,6 +62,12 @@ Append `?q=low`, `?q=medium` or `?q=high` to the URL to force a graphics preset.
 **The sword arts.** Tap F for the **Iai**: the blade leaves its scabbard and goes home again faster than the eye. The cut races out as a ring of light to the horizon and the picture itself slides apart along it; on the click of the guard against the scabbard, everything within 420 m in the plane of the cut falls apart. Soldiers burn away, spires lose their tops, the Colossus is cut in two at the waist, and a falling moon comes apart in burning pieces. Look up and the plane of the cut tilts with you, through an airship fleet. Hold F instead and the blade goes up: the light poured into it climbs past the clouds while lightning crawls up its length and the rocks rise. Let go with 50 Divinity and the **Worldsplitter** brings a kilometre of light down on the world. It cuts a vertical sheet six kilometres long: a molten canyon through the plain and the mountain range behind it, the cloud deck split open to the stars from horizon to horizon, and anything in the sky along the line. Aimed at the eclipse during its fight, it cuts that too.
 
 Every swing throws a crescent of light that swells as it flies and cuts everything in its path out to about 300 m; the combo finisher throws two at once, crossed.
+
+**The Horizon Cut.** Look at the mountains and press R: one level stroke at that height, four kilometres out. A glowing line races across every slope the cut passes through, the range cracks along it, and on the click of the sheathe every peak above it slides off its stump, topples down the range and crashes in a cloud of dust and late thunder. The stumps are left flat, molten on top, and cool over a minute. Anything flying at that height comes apart too.
+
+**Sky Leap.** Hold jump and the hero breaks the sound barrier straight up, hanging high over the battlefield. From up there the dive goes where the crosshair is and comes down burning: a crater a hundred metres across, cracks racing out of it in every direction, and a shockwave that throws everything for a hundred metres.
+
+**The little things.** The flash-step cuts nothing while it passes: a beat after it stops, cut lines flare across everything in its path and they fall apart together on the click. When the hero gathers power the clouds wind into a spiral storm with a glowing eye overhead, and the legion loses its nerve: the ranks back away from him, eyes on him, archers lowering their bows. At S rank arrows burn to embers in his aura before they reach him; from A rank every footfall at a run cracks the ground and leaves a glowing print. Stand still after a massacre and he flicks the blade clean, molten drops scorching the ground in an arc beside him.
 
 Kills, parries and feats fill a style meter that climbs from **D**readful through **C**ataclysmic, **B**iblical, **A**pocalyptic, **S**overeign and **SS** Supreme to **SSS · Skycleaver**. Higher ranks multiply your score and intensify the music.
 
@@ -87,6 +94,7 @@ Kills, parries and feats fill a style meter that climbs from **D**readful throug
 - The Iai: a disc attack shape through everything around the hero, tilted with the aim, a ring of light racing out to 600 m, the cut lines flaring on everything caught before it falls, sparks thrown flat along the plane; horizontally cut spires slide off their stumps and topple like felled trees
 - The Worldsplitter: a blade of light up to 1.8 km long that follows the sword through a slow, heavy swing, a vertical slab of damage 6 km long and 4 km tall, a curtain of light that tears out along the cut to the horizon, a canyon through the far field, dust walls peeling off both lips, a late flash and thunder where the cut meets the mountains, a release cinematic, and a sky shader that parts the cloud deck in a straight canyon and a blasted ring, healing over a minute and a half
 - Explosions with a fireball made of several boiling lobes (two octaves of displacement, per-pixel soot crusting over fire seams), white-hot to orange to smoke, handing over to a heavy smoke column
+- The Horizon Cut (`world/peaks.ts`): every region of the far field above the slice plane, split into pieces around the hero, becomes its own mesh drawn by the ground's material in a cap mode (the old surface above the plane, closed by a molten underside, its texture glued to the rock while its transform slides, tips and buries it). The far field keeps up to four exact slices for the ground shader, which flattens the procedural relief under them and draws a glowing cut line where the plane meets a slope; older slices are baked into the heights
 - Deformable terrain: a heightfield the hero's power carves for real. Meteor-dive slams leave craters that grow with the fall, the Heaven Splitter and the Worldsplitter tear canyons to the horizon, shells, meteors, crashing airships and the Colossus's sword gouge the plain, the Sol Lance bores molten grooves, and a nuke or the moon leaves a bowl a hundred metres across. Crater walls turn to fractured, stratified rock; the hero, the legion, arrows, rubble, smoke and the camera all follow the ground
 - An instanced horde of up to 2,200 soldiers in one draw call, animated in the vertex shader, flung, sliced and vaporized
 - Procedural mushroom clouds with a rolling toroidal cap, stem, base surge and condensation ring; shockwaves that travel at a visible speed and flatten everything in their band
@@ -125,7 +133,8 @@ src/
     fx/             explosions, debris, afterimages, mushroom clouds, slicer,
                     particleFx.ts: the spark / ember / mote vocabulary on the GPU pools,
                     swordFx.ts: the Iai's ring of light, the Worldsplitter's blade and curtain, shock rings; shards.ts: a moon cut to pieces
-    world/          layout, sky, ground, scorch map, terrain heightfield, the far field and its mountains, spires
+    world/          layout, sky, ground, scorch map, terrain heightfield, the far field and its mountains,
+                    peaks.ts: mountaintops cut off by the Horizon Cut; spires
     waves.ts        the eight trials
     director.ts     title attract mode, campaign/sandbox switching
     score.ts        style ranks, combo, feed, tally
