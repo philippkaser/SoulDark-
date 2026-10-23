@@ -5,6 +5,7 @@ import { Avatar } from '../../engine/rig/avatar'
 import type { InputFrame } from '../../input/input'
 import { useUI } from '../../state/store'
 import { slashHitstop } from '../feel'
+import { AMBER, FIRE, WHITE_GOLD } from '../fx/particleFx'
 import type { Game } from '../Game'
 import { newHitId, type ParryResult, type Tier } from '../types'
 import { ARENA_HARD, ARENA_R } from '../world/layout'
@@ -50,6 +51,7 @@ const _v = new THREE.Vector3()
 const _w = new THREE.Vector3()
 const _chest = new THREE.Vector3()
 const _dir = new THREE.Vector3()
+const UP = new THREE.Vector3(0, 1, 0)
 
 export class Player {
   readonly model: HeroModel
@@ -103,6 +105,8 @@ export class Player {
   private diveFrom = 0
   /** Until the next parry counter-crescent may fly. */
   private counterT = 0
+  /** This leap has been boosted into a Sky Leap. */
+  private skyLeaped = false
 
   constructor(game: Game) {
     this.game = game
@@ -306,6 +310,7 @@ export class Player {
     this.state = s
     this.t = 0
     this.fired = false
+    this.leapt = false
   }
 
   private stopCharge() {
@@ -376,6 +381,8 @@ export class Player {
         break
       }
       case 'air': {
+        // jump held through the start of the leap: the Sky Leap
+        if (!this.skyLeaped && this.leapt && enabled && f.jumpHeld && this.t > 0.14 && this.t < 0.45 && this.vel.y > 0) this.skyLeap()
         this.airborne(dt, mx, mz)
         if (want(f.slash)) this.enter('airslash')
         else if (want(f.jump)) this.startDive()
@@ -444,6 +451,13 @@ export class Player {
         this.vel.y = -95
         this.integrate(dt)
         if (Math.random() < dt * 60) g.fx.afterimage('#ffcf80', 0.25, 0.6)
+        // from a great height the hero comes down burning, like a meteor
+        if (this.diveFrom - this.pos.y > 25 || this.altitude > 25) {
+          this.chestPos(_v)
+          g.fx.fire.spawn(_v, _w.set((Math.random() - 0.5) * 6, 30 + Math.random() * 20, (Math.random() - 0.5) * 6), [1, 0.55, 0.2], 0.9, 1.2 + Math.random(), 0.35, 0, 2, { grow: 1.6 })
+          g.fx.sparkShower(_v, UP, Math.round(40 * dt * 60), 30, 0.4, FIRE, { life: 0.4, size: 0.04, drag: 2, stretch: 0.04, heat: 3 })
+          this.arts.fx.placeGlow(_v, 2.2, 0.5)
+        }
         if (this.grounded) this.slamLanding()
         break
       }
@@ -540,9 +554,11 @@ export class Player {
     this.vel.x += (mx * RUN - this.vel.x) * k
     this.vel.z += (mz * RUN - this.vel.z) * k
     if (Math.abs(mx) + Math.abs(mz) > 0.1) this.yaw = turnToward(this.yaw, Math.atan2(mx, mz), 6 * dt)
-    this.vel.y -= GRAVITY * dt
+    // a Sky Leap hangs at its apex long enough to pick where to come down
+    this.vel.y -= GRAVITY * dt * (this.skyLeaped && Math.abs(this.vel.y) < 12 ? 0.3 : 1)
     this.integrate(dt)
     if (this.grounded) {
+      this.skyLeaped = false
       this.game.fx.dust(_v.copy(this.pos).setY(this.pos.y + 0.2), 4, 1, 1.2)
       audio.landing(0.3)
       this.enter('free')
@@ -587,8 +603,13 @@ export class Player {
     }
   }
 
+  /** Did the hero leap into the current 'air' state (rather than fall or step off something)? */
+  private leapt = false
+
   private leap() {
     this.enter('air')
+    this.leapt = true
+    this.skyLeaped = false
     this.vel.y = 25
     this.grounded = false
     this.pos.y += 0.05
@@ -810,13 +831,55 @@ export class Player {
     this.enter(this.grounded ? 'free' : 'air')
   }
 
+  /**
+   * The leap goes on up: the hero breaks the sound barrier straight up and
+   * hangs high over the battlefield, the ground cracking where he left it.
+   */
+  private skyLeap() {
+    const g = this.game
+    this.skyLeaped = true
+    this.vel.y = 80
+    this.vel.x *= 1.4
+    this.vel.z *= 1.4
+    const gy = g.terrain.heightAt(this.pos.x, this.pos.z)
+    const foot = new THREE.Vector3(this.pos.x, gy, this.pos.z)
+    g.terrain.crater(foot.x, foot.z, 4.5, 0.8, { rim: 0.4, ejecta: 0.5 })
+    g.fx.groundShock(foot, 18)
+    this.arts.fx.ring(_v.copy(this.pos).setY(this.pos.y + 0.5), UP, 1, 9, 0.35, { thick: 0.08, alpha: 1, color: '#fff1dc' })
+    this.arts.fx.ring(_v.copy(this.pos).setY(this.pos.y + 3), UP, 1, 6, 0.3, { thick: 0.1, alpha: 0.8, speed: 30, delay: 0.04 })
+    g.fx.gpu.plasmaRing(_v.copy(foot).setY(gy + 0.4), UP, 14, 500, WHITE_GOLD, { expand: 0.5, fill: 0.3, thick: 0.1, life: 0.7, size: 0.05, stretch: 0.04, heat: 2.4 })
+    g.post.shock(_v.copy(this.pos).setY(this.pos.y + 1), g.camera, 0.03, { speed: 2.4, width: 0.8 })
+    g.post.speedLines(0.9, 0.2)
+    g.post.kickChroma(0.5)
+    g.cam.kick(_w.set(0, -1, 0), 0.25)
+    g.cam.kickFov(12)
+    g.cam.addTrauma(0.3)
+    g.fx.afterimage('#ffd080', 0.5, 0.9)
+    g.rumble(0.6, 0.6, 220)
+    audio.sonicBoom(true)
+    audio.landing(1.2)
+  }
+
   private startDive() {
+    const g = this.game
     this.enter('dive')
     this.diveFrom = this.pos.y
     this.invuln = 0.4
     audio.dive()
     this.vel.x = Math.sin(this.aimYaw) * 4
     this.vel.z = Math.cos(this.aimYaw) * 4
+    // from high enough the dive is aimed: it comes down where the crosshair is
+    const h = this.altitude
+    if (h > 15) {
+      const t = h / 95
+      const a = g.cam.aimPoint
+      if (a.y < this.pos.y - 5) {
+        this.vel.x = clamp((a.x - this.pos.x) / t, -120, 120)
+        this.vel.z = clamp((a.z - this.pos.z) / t, -120, 120)
+      }
+      g.post.speedLines(1, 0.4)
+      g.cam.kickFov(10)
+    }
   }
 
   private slamLanding() {
@@ -835,6 +898,7 @@ export class Player {
     g.fx.light(_v.copy(p).setY(p.y + 2), '#ffd090', 260, 40, 5)
     // the camera drops with the impact and bounces back; the power gathered on the way down is spent
     const big = Math.min(1, fall / 30)
+    if (fall > 25) this.meteorFall(p, Math.min(1, (fall - 25) / 40))
     g.cam.kick(_w.set(0, -1, 0), 0.3 + big * 0.35)
     g.cam.addTrauma(0.75 + big * 0.3)
     g.cam.kickFov(6 + big * 8)
@@ -847,6 +911,66 @@ export class Player {
     g.rumble(0.7 + big * 0.3, 0.6, 260 + big * 240)
     audio.landing(2 + big * 2)
     g.score.feat('slam', 1)
+  }
+
+  /**
+   * Coming down from a Sky Leap: the plain caves in a bowl a hundred metres
+   * across, cracks race out of it in every direction, and a shockwave throws
+   * everything near over the horizon. `k` 0..1 grows with the height.
+   */
+  private meteorFall(p: THREE.Vector3, k: number) {
+    const g = this.game
+    const fx = g.fx
+    g.terrain.crater(p.x, p.z, 34 + 22 * k, 10 + 5 * k, { rim: 0.5, ejecta: 1 })
+    this.pos.y = g.terrain.heightAt(this.pos.x, this.pos.z)
+    const r = 45 + 75 * k
+    g.damage({ t: 'ring', c: p, r0: 0, r1: r, h: p.y + 14 }, { id: newHitId(), kind: 'slam', dmg: 900, power: 46 + 20 * k, origin: p, friendly: true })
+    g.cutProjectiles({ t: 'sphere', c: p, r: r * 0.6 })
+    // cracks race out of the crater, glowing
+    const n = 9 + Math.round(5 * k)
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.4
+      let x0 = p.x + Math.sin(a) * 20
+      let z0 = p.z + Math.cos(a) * 20
+      const len = 40 + Math.random() * (40 + 60 * k)
+      const segs = 4
+      for (let j = 0; j < segs; j++) {
+        const b = a + (Math.random() - 0.5) * 0.5
+        const x1 = x0 + Math.sin(b) * (len / segs)
+        const z1 = z0 + Math.cos(b) * (len / segs)
+        const sx0 = x0
+        const sz0 = z0
+        fx.after(j * 0.05 + 0.03, () => {
+          g.scorch.fissure(sx0, sz0, x1, z1, 1.4 - j * 0.25, 1)
+          g.terrain.trench(sx0, sz0, x1, z1, 2.4 - j * 0.4, 1.2 - j * 0.2, { lip: 0.5, jag: 0.3 })
+        })
+        x0 = x1
+        z0 = z1
+      }
+    }
+    fx.groundShock(p, 70 + 50 * k)
+    fx.gpu.plasmaRing(_v.copy(p).setY(p.y + 0.6), UP, 60 + 40 * k, Math.round(1600 * g.q), AMBER, { expand: 0.9, fill: 0.4, thick: 0.35, life: 1.6, size: 0.08, stretch: 0.04, heat: 2.4 })
+    fx.debris.burst(_v.copy(p).setY(p.y + 1), 60, 34 + 14 * k, 0.4 + 0.4 * k, 0.8, 1.3)
+    const nd = Math.round(40 * g.q)
+    for (let i = 0; i < nd; i++) {
+      const a = (i / nd) * Math.PI * 2
+      _v.set(p.x + Math.sin(a) * 12, p.y + 1, p.z + Math.cos(a) * 12)
+      _w.set(Math.sin(a) * (60 + Math.random() * 40), 6 + Math.random() * 10, Math.cos(a) * (60 + Math.random() * 40))
+      fx.smoke.spawn(_v, _w, [0.36, 0.3, 0.26], 0.5, 6 + Math.random() * 5, 2.5 + Math.random() * 2, -0.3, 1.3, { grow: 2.4 })
+    }
+    fx.light(_v.copy(p).setY(p.y + 6), '#ffc070', 500, 140, 3)
+    g.post.impactFrames([2, 0], 1 / 24)
+    g.post.flashTo(0.05, '#fff0d8', 5)
+    g.post.shock(_v.copy(p).setY(p.y + 1), g.camera, 0.06, { speed: 1.4, width: 1.6 })
+    g.post.streak(0.6, p)
+    g.time.freeze(0.12)
+    g.time.divine(1.2, 0.3)
+    g.sky.flash(UP, 0.5, '#ffd8a0')
+    g.gust(p, 34)
+    g.rumble(1, 1, 700)
+    audio.nukeShock()
+    audio.duck(0.6, 2)
+    useUI.getState().stamp('METEOR FALL', 'divine')
   }
 
   private startDash(mx: number, mz: number) {
