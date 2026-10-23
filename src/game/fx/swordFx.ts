@@ -140,7 +140,7 @@ function glowMat() {
 /** The Iai's cut: a band of light on an open cylinder, a hairline core in a soft halo. */
 function discBandMat() {
   return new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color('#ffc46a') }, uAlpha: { value: 0 }, uSeed: { value: 0 }, uAge: { value: 0 } },
+    uniforms: { uColor: { value: new THREE.Color('#ffc46a') }, uAlpha: { value: 0 }, uSeed: { value: 0 }, uAge: { value: 0 }, uArc: { value: new THREE.Vector2(0, 4) } },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
       varying float vNear;
@@ -155,16 +155,21 @@ function discBandMat() {
       uniform float uAlpha;
       uniform float uSeed;
       uniform float uAge;
+      uniform vec2 uArc;
       varying vec2 vUv;
       varying float vNear;
       ${HASH}
       void main() {
+        // only the arc the stroke swept (around the band's axis: u runs once round from +z)
+        float off = abs(mod(vUv.x * 6.2831853 - uArc.x + 3.14159265, 6.2831853) - 3.14159265);
+        float arc = smoothstep(uArc.y + 0.12, uArc.y - 0.05, off);
+        if (arc <= 0.0) discard;
         float y = vUv.y - 0.5;
         float core = exp(-pow(y / 0.06, 2.0));
         float halo = exp(-pow(y / 0.26, 2.0));
         float flick = 0.7 + 0.3 * vn(vUv.x * 380.0 + uSeed + uAge * 40.0);
         vec3 col = uColor * halo * 0.9 + vec3(4.2, 3.8, 3.2) * core;
-        gl_FragColor = vec4(col * uAlpha * flick * vNear, 1.0);
+        gl_FragColor = vec4(col * uAlpha * flick * vNear * arc, 1.0);
       }`,
     transparent: true,
     depthWrite: false,
@@ -364,6 +369,8 @@ interface Disc {
   fade: number
   /** Gives up waiting for the sheathe after this long. */
   maxHold: number
+  /** A full disc shows its sheen; an arc only its edge. */
+  sheetOn: boolean
 }
 
 interface Curtain {
@@ -423,7 +430,7 @@ export class SwordFx {
         m.renderOrder = 10
         this.root.add(m)
       }
-      this.discs.push({ band, sheet, bandMat, sheetMat, on: false, t: 0, radius: 1, expand: 0.2, flashAt: -1, fade: 0.5, maxHold: 1 })
+      this.discs.push({ band, sheet, bandMat, sheetMat, on: false, t: 0, radius: 1, expand: 0.2, flashAt: -1, fade: 0.5, maxHold: 1, sheetOn: true })
     }
     // the curtain: x along the cut (0..1), y up (0..1)
     const sheet = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0)
@@ -487,7 +494,7 @@ export class SwordFx {
    * out to `radius` in `expand` seconds and hanging there as a hairline until
    * `flashDisc` (the sheathe) makes it blaze and vanish. Returns its handle.
    */
-  disc(c: THREE.Vector3, n: THREE.Vector3, radius: number, expand = 0.16, fade = 0.55, maxHold = 1.5) {
+  disc(c: THREE.Vector3, n: THREE.Vector3, radius: number, expand = 0.16, fade = 0.55, maxHold = 1.5, arc?: { heading: number; half: number }) {
     let i = this.discs.findIndex((d) => !d.on)
     if (i < 0) i = this.discs.reduce((b, d, k) => (d.t > this.discs[b].t ? k : b), 0)
     const d = this.discs[i]
@@ -505,6 +512,10 @@ export class SwordFx {
     const seed = Math.random() * 100
     d.bandMat.uniforms.uSeed.value = seed
     d.sheetMat.uniforms.uSeed.value = seed
+    // an arc is measured around the band's own axis; only level discs (n = up) have a heading worth naming
+    d.bandMat.uniforms.uArc.value.set(arc?.heading ?? 0, arc?.half ?? 4)
+    d.sheet.visible = false
+    d.sheetOn = !arc
     return i
   }
 
@@ -610,7 +621,8 @@ export class SwordFx {
       // the band thickens with distance so the far cut still reads as a line
       d.band.scale.set(r, 0.3 + r * 0.0045, r)
       d.sheet.scale.setScalar(r)
-      d.band.visible = d.sheet.visible = s.a > 0.002
+      d.band.visible = s.a > 0.002
+      d.sheet.visible = d.band.visible && d.sheetOn
       d.bandMat.uniforms.uAlpha.value = s.a
       d.bandMat.uniforms.uAge.value = d.t
       d.sheetMat.uniforms.uAlpha.value = s.a * (d.t < d.expand ? 1 : 0.5)

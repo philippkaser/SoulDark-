@@ -7,7 +7,9 @@ export const FAR_HALF = 4096
 export const MAX_CUTS = 12
 /** How deep a canyon can go below the plain (m). */
 export const CANYON_FLOOR = -90
-/** Most horizontal slices (the Horizon Cut) the ground shader keeps exactly flat; older ones are baked in. */
+/** The ceiling where nothing was ever cut away. */
+export const NO_CEIL = 10000
+/** Most Horizon Cuts whose cut lines the ground shader still draws glowing. */
 export const MAX_SLICES = 4
 /** How fast a slice's cut line races out across the world (m/s). */
 export const SLICE_SPEED = 6000
@@ -103,6 +105,9 @@ export interface FarSlice {
   y: number
   /** World clock time of the cut. */
   time: number
+  /** The arc it covered: centre heading (atan2(x, z)) and half-width. */
+  heading: number
+  half: number
 }
 
 export interface CutOpts {
@@ -132,13 +137,18 @@ export class FarField {
   readonly cutA: THREE.Vector4[] = []
   readonly cutB: THREE.Vector4[] = []
   readonly slices: FarSlice[] = []
-  /** Packed for the shader: (x, z, r, y) and (time, on, 0, 0) per slice. */
+  /** Packed for the shader: (x, z, r, y) and (time, on, heading, half) per slice. */
   readonly sliceA: THREE.Vector4[] = []
   readonly sliceB: THREE.Vector4[] = []
   version = 0
   private base: Float32Array
   private data: Uint16Array
   private dirty = false
+  /** What the Horizon Cut left: a ceiling over every cell (NO_CEIL where nothing was cut), mirrored to the GPU. */
+  readonly ceil: Float32Array
+  readonly ceilTex: THREE.DataTexture
+  private ceilData: Uint16Array
+  private ceilDirty = false
   private seq = 1
 
   constructor(res = 512, seed = 7) {
@@ -160,6 +170,16 @@ export class FarField {
       for (let i = 0; i < res; i++) H[j * res + i] = mountainHeight(-this.half + (i + 0.5) * this.cell, z, seed)
     }
     this.base = H.slice()
+    this.ceil = new Float32Array(res * res).fill(NO_CEIL)
+    this.ceilData = new Uint16Array(res * res)
+    this.ceilTex = new THREE.DataTexture(this.ceilData, res, res, THREE.RedFormat, THREE.HalfFloatType)
+    this.ceilTex.magFilter = THREE.LinearFilter
+    this.ceilTex.minFilter = THREE.LinearFilter
+    this.ceilTex.generateMipmaps = false
+    this.ceilTex.wrapS = this.ceilTex.wrapT = THREE.ClampToEdgeWrapping
+    this.ceilTex.colorSpace = THREE.NoColorSpace
+    this.ceilTex.unpackAlignment = 2
+    this.uploadCeil()
     this.tex = new THREE.DataTexture(this.data, res, res, THREE.RedFormat, THREE.HalfFloatType)
     this.tex.magFilter = THREE.LinearFilter
     this.tex.minFilter = THREE.LinearFilter
@@ -175,54 +195,58 @@ export class FarField {
     this.heights.set(this.base)
     this.cuts.length = 0
     this.slices.length = 0
+    this.ceil.fill(NO_CEIL)
+    this.uploadCeil()
     this.pack()
     this.upload()
     this.version++
   }
 
-  /** Height at (x, z) with the Horizon Cut's slices taken off. */
+  /** Height at (x, z) with whatever the Horizon Cut took off the top. */
   heightAt(x: number, z: number): number {
-    const h = this.rawHeightAt(x, z)
-    let top = h
-    for (const s of this.slices) {
-      if (top > s.y && (x - s.x) * (x - s.x) + (z - s.z) * (z - s.z) < s.r * s.r) top = s.y
+    return Math.min(this.rawHeightAt(x, z), this.sample(this.ceil, x, z))
+  }
+
+  /** The ceiling over (x, z): the height the Horizon Cut flattened the ground to (NO_CEIL where it never cut). */
+  ceilAt(x: number, z: number) {
+    return this.sample(this.ceil, x, z)
+  }
+
+  /** Flatten these cells (indices into the grid) at `y`: everything above it is gone. */
+  cutCeiling(cells: ArrayLike<number>, y: number) {
+    const C = this.ceil
+    for (let i = 0; i < cells.length; i++) {
+      const k = cells[i]
+      if (y < C[k]) C[k] = y
     }
-    return top
+    this.ceilDirty = true
+    this.version++
+  }
+
+  /** The ceiling was edited directly (`ceil`): send it to the GPU. */
+  ceilChanged() {
+    this.ceilDirty = true
+    this.version++
   }
 
   /**
-   * Cut everything within `r` of (x, z) above height `y` away, flat (the
-   * caller animates what was cut off). The oldest slice beyond MAX_SLICES is
-   * baked into the heights.
+   * Record a Horizon Cut for the ground shader's glow: its plane, its reach
+   * from (x, z), the arc it covered (centre heading and half-width, rad) and
+   * when it happened. The flattening itself is `cutCeiling`.
    */
-  slice(x: number, z: number, r: number, y: number, time: number) {
-    if (this.slices.length >= MAX_SLICES) this.bake(this.slices.shift()!)
-    this.slices.push({ x, z, r, y, time })
+  slice(x: number, z: number, r: number, y: number, time: number, heading = 0, half = Math.PI) {
+    if (this.slices.length >= MAX_SLICES) this.slices.shift()
+    this.slices.push({ x, z, r, y, time, heading, half })
     this.pack()
     this.version++
   }
 
-  private bake(s: FarSlice) {
-    const n = this.res
-    const c = this.cell
-    const H = this.heights
-    const i0 = Math.max(0, Math.floor((s.x - s.r + this.half) / c))
-    const i1 = Math.min(n - 1, Math.ceil((s.x + s.r + this.half) / c))
-    const j0 = Math.max(0, Math.floor((s.z - s.r + this.half) / c))
-    const j1 = Math.min(n - 1, Math.ceil((s.z + s.r + this.half) / c))
-    for (let j = j0; j <= j1; j++) {
-      const dz = -this.half + (j + 0.5) * c - s.z
-      for (let i = i0; i <= i1; i++) {
-        const dx = -this.half + (i + 0.5) * c - s.x
-        const k = j * n + i
-        if (H[k] > s.y && dx * dx + dz * dz < s.r * s.r) H[k] = s.y
-      }
-    }
-    this.dirty = true
-  }
-
   /** Bilinear height at (x, z), matching the GPU's linear filtering (clamped at the edge). */
   rawHeightAt(x: number, z: number): number {
+    return this.sample(this.heights, x, z)
+  }
+
+  private sample(H: Float32Array, x: number, z: number): number {
     const n = this.res
     let u = (x + this.half) / this.cell - 0.5
     let v = (z + this.half) / this.cell - 0.5
@@ -236,7 +260,6 @@ export class FarField {
     const j1 = Math.min(n - 1, j0 + 1)
     const fu = u - i0
     const fv = v - j0
-    const H = this.heights
     const a = H[j0 * n + i0]
     const b = H[j0 * n + i1]
     const c = H[j1 * n + i0]
@@ -305,6 +328,15 @@ export class FarField {
   /** Push the heights to the GPU when they changed (a canyon is a one-off, so a full upload is fine). */
   update() {
     if (this.dirty) this.upload()
+    if (this.ceilDirty) this.uploadCeil()
+  }
+
+  private uploadCeil() {
+    const C = this.ceil
+    const D = this.ceilData
+    for (let k = 0; k < C.length; k++) D[k] = toHalf(C[k])
+    this.ceilTex.needsUpdate = true
+    this.ceilDirty = false
   }
 
   private upload() {
@@ -320,7 +352,7 @@ export class FarField {
       const s = this.slices[i]
       if (s) {
         this.sliceA[i].set(s.x, s.z, s.r, s.y)
-        this.sliceB[i].set(s.time, 1, 0, 0)
+        this.sliceB[i].set(s.time, 1, s.heading, s.half)
       } else {
         this.sliceA[i].set(0, 0, 0, 1e5)
         this.sliceB[i].set(-1e6, 0, 0, 0)

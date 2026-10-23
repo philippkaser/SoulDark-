@@ -55,6 +55,8 @@ export const HORIZON_CD = 3
 export const HORIZON_RANGE = 4200
 export const HORIZON_MIN = 40
 export const HORIZON_MAX = 1100
+/** The Horizon Cut takes the peaks within this arc either side of the aim (rad). */
+export const HORIZON_ARC = (55 * Math.PI) / 180
 /** The draw happens at IAI_DRAW; the pieces are let go this long after it. */
 const HORIZON_SHEATHE = 0.55
 const TARGET_DMG = 8000
@@ -335,8 +337,8 @@ export class SwordArts implements System {
     const aim = horizonHeight(g.cam.aimOrigin, g.cam.aimDir, (x, z) => g.far.heightAt(x, z), chest.y)
     const c = new THREE.Vector3(p.pos.x, aim.y, p.pos.z)
     const n = new THREE.Vector3(0, 1, 0)
-    const peaks = g.peaks.slice(c.x, c.z, HORIZON_RANGE, aim.y)
-    const disc = this.fx.disc(c, n, HORIZON_RANGE, HORIZON_RANGE / SLICE_SPEED, 1.4, 3)
+    const peaks = g.peaks.slice(c.x, c.z, HORIZON_RANGE, aim.y, Math.atan2(g.cam.aimDir.x, g.cam.aimDir.z), HORIZON_ARC)
+    const disc = this.fx.disc(c, n, HORIZON_RANGE, HORIZON_RANGE / SLICE_SPEED, 1.4, 3, { heading: Math.atan2(g.cam.aimDir.x, g.cam.aimDir.z), half: HORIZON_ARC })
     this.pending.push({ t: HORIZON_SHEATHE, r: HORIZON_RANGE, h: 30, c, n, disc, peaks })
     // the stroke: the blade flashes, the frame slides apart along the far line of the cut
     const fwd = _w.set(g.cam.aimDir.x, 0, g.cam.aimDir.z)

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import * as THREE from 'three'
 import { horizonHeight, HORIZON_MAX, HORIZON_MIN } from '../src/game/player/arts'
-import { FarField, MAX_SLICES, mountainHeight } from '../src/game/world/farField'
+import { FarField, MAX_SLICES, mountainHeight, NO_CEIL } from '../src/game/world/farField'
 
 // a small field keeps the tests quick; the geometry is the same at any resolution
 const far = new FarField(128)
@@ -27,31 +27,37 @@ describe('the far field', () => {
     expect(peak().h).toBeGreaterThan(200)
   })
 
-  test('a slice takes everything above its plane off within its radius, and nothing outside it', () => {
+  test('a cut ceiling flattens exactly the cells it covers, and reset restores them', () => {
     far.reset()
     const p = peak()
     const y = p.h * 0.5
-    far.slice(0, 0, 4000, y, 0)
-    expect(far.heightAt(p.x, p.z)).toBeCloseTo(y)
-    expect(far.rawHeightAt(p.x, p.z)).toBeCloseTo(p.h)
-    // ground below the plane is untouched
+    const n = far.res
+    const i = Math.floor((p.x + far.half) / far.cell)
+    const j = Math.floor((p.z + far.half) / far.cell)
+    const cells: number[] = []
+    for (let b = -6; b <= 6; b++) for (let a = -6; a <= 6; a++) cells.push((j + b) * n + (i + a))
+    far.cutCeiling(cells, y)
+    const cx = -far.half + (i + 0.5) * far.cell
+    const cz = -far.half + (j + 0.5) * far.cell
+    expect(far.heightAt(cx, cz)).toBeLessThanOrEqual(y + 1e-3)
+    expect(far.rawHeightAt(cx, cz)).toBeGreaterThan(y)
+    expect(far.ceilAt(cx, cz)).toBeCloseTo(y)
+    // ground below the cut and ground far away are untouched
     expect(far.heightAt(0, 0)).toBe(far.rawHeightAt(0, 0))
+    expect(far.ceilAt(-cx, -cz)).toBe(NO_CEIL)
     far.reset()
-    far.slice(p.x + 5000, p.z, 100, y, 0)
-    expect(far.heightAt(p.x, p.z)).toBeCloseTo(p.h)
+    expect(far.heightAt(cx, cz)).toBeCloseTo(far.rawHeightAt(cx, cz))
   })
 
-  test('slices beyond the shader budget are baked into the heights, so nothing grows back', () => {
+  test('the glow records keep only the latest cuts', () => {
     far.reset()
-    const p = peak()
-    far.slice(0, 0, 4000, p.h * 0.4, 0)
-    for (let i = 0; i < MAX_SLICES; i++) far.slice(9000 + i, 9000, 10, 500, 0)
+    for (let i = 0; i < MAX_SLICES + 2; i++) far.slice(0, 0, 4000, 100 + i, i, 0.5, 0.9)
     expect(far.slices.length).toBe(MAX_SLICES)
-    expect(far.rawHeightAt(p.x, p.z)).toBeLessThanOrEqual(p.h * 0.4 + 1e-3)
-    expect(far.sliceA.length).toBe(MAX_SLICES)
+    expect(far.slices[MAX_SLICES - 1].y).toBe(100 + MAX_SLICES + 1)
+    expect(far.sliceB[0].z).toBeCloseTo(0.5)
+    expect(far.sliceB[0].w).toBeCloseTo(0.9)
     far.reset()
     expect(far.slices.length).toBe(0)
-    expect(far.rawHeightAt(p.x, p.z)).toBeCloseTo(p.h)
   })
 })
 

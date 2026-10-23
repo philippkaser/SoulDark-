@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { NOISE_GLSL } from '../../engine/gfx/noise'
 import { PERTURB_GLSL } from '../../engine/gfx/triplanar'
 import type { Quality } from '../../state/settings'
-import { MAX_CUTS, MAX_SLICES, SLICE_SPEED, type FarField } from './farField'
+import { MAX_CUTS, MAX_SLICES, NO_CEIL, SLICE_SPEED, type FarField } from './farField'
 import { SCORCH_HALF, type ScorchMap } from './scorch'
 import type { Terrain } from './terrain'
 
@@ -16,6 +16,7 @@ uniform float uFarHalf;
 uniform float uFarTexel;
 uniform vec4 uSliceA[${MAX_SLICES}];
 uniform vec4 uSliceB[${MAX_SLICES}];
+uniform sampler2D uCeil;
 float tSample(vec2 uv) { return textureLod(uHeight, uv, 0.0).r; }
 float fSample(vec2 p) { return textureLod(uFar, p / (2.0 * uFarHalf) + 0.5, 0.0).r; }
 float mHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -40,16 +41,8 @@ float mDetail(vec2 p, float h, int oct) {
   return (s - 0.55) * amp;
 }
 float farH(vec2 p, int oct) { float h = fSample(p); return h + mDetail(p, h, oct); }
-// the Horizon Cut: the lowest slice plane over p (or far above everything)
-float sliceTop(vec2 p) {
-  float y = 1e5;
-  for (int i = 0; i < ${MAX_SLICES}; i++) {
-    if (uSliceB[i].y < 0.5) continue;
-    vec4 A = uSliceA[i];
-    if (length(p - A.xy) < A.z) y = min(y, A.w);
-  }
-  return y;
-}
+// the Horizon Cut: the height it flattened the ground to over p (far above everything where it never cut)
+float sliceTop(vec2 p) { return textureLod(uCeil, p / (2.0 * uFarHalf) + 0.5, 0.0).r; }
 float farHC(vec2 p, int oct) { return min(farH(p, oct), sliceTop(p)); }
 `
 
@@ -83,6 +76,7 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
     uCutB: { value: far.cutB },
     uSliceA: { value: far.sliceA },
     uSliceB: { value: far.sliceB },
+    uCeil: { value: far.ceilTex },
     uAerial: { value: 0.00052 },
   }
   const detail = quality === 'low' ? 0 : 1
@@ -251,7 +245,11 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
             if (B.y < 0.5) continue;
             vec4 A = uSliceA[i];
             float age = max(0.0, uClock - B.x);
-            float d = length(P.xz - A.xy);
+            vec2 rel = P.xz - A.xy;
+            float d = length(rel);
+            // only the arc it swept, and only on the ground it actually cut
+            float off = abs(mod(atan(rel.x, rel.y) - B.z + 3.14159265, 6.2831853) - 3.14159265);
+            if (off > B.w || sliceTop(P.xz) > ${(NO_CEIL / 2).toFixed(1)}) continue;
             float reach = min(A.z, age * ${SLICE_SPEED.toFixed(1)});
             if (d > reach) continue;
             float band = exp(-abs(P.y - A.w) / w);
@@ -378,7 +376,7 @@ export function groundMaterial(scorch: ScorchMap, terrain: Terrain, far: FarFiel
         #if ${isCap}
           // the cap's underside is the cut itself: molten, cooling as it falls
           if (vLayer > 0.5 || !gl_FrontFacing) {
-            float ck = (vLayer > 0.5 ? 0.35 : 0.15) + 0.9 * exp(-max(0.0, uClock - uCapT0) / 30.0);
+            float ck = (vLayer > 0.5 ? 0.12 : 0.06) + 0.6 * exp(-max(0.0, uClock - uCapT0) / 10.0);
             totalEmissiveRadiance += molten(vLayer > 0.5 ? gp : vec2(gp.x + gp.y, vGPos.y * 1.3), ck) * 1.3 + vec3(0.4, 0.04, 0.006) * ck;
           }
         #endif`,
