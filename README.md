@@ -23,6 +23,8 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
 | `bun run preview` | Serve the production build (http://localhost, port 80) |
 | `bun run start` | Build, then serve the production build on port 80 |
+
+The servers use port 80 when they can. Ports below 1024 need admin rights on Linux (`sudo bun run start`); without them, or if port 80 is taken, they fall back to port 5173 and say so. `PORT=3000 bun run start` picks any port you like.
 | `bun run typecheck` | TypeScript, no emit |
 | `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the sword arts' cut disc and the sky split, far-field slices and the Horizon Cut's aim, vibration merging, kill cams, returned warheads clearing the ground) |
 
