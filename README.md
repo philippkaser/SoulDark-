@@ -21,7 +21,7 @@ Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anythi
 | --- | --- |
 | `bun run dev` | Vite dev server |
 | `bun run build` | Production build into `dist/` (fully static, host it anywhere) |
-| `bun run preview` | Serve the production build |
+| `bun run preview` | Serve the production build (http://localhost, port 80) |
 | `bun run typecheck` | TypeScript, no emit |
 | `bun test` | Headless tests (collision shapes, time control, scoring, slicing, GPU particle motion, terrain, post effects, dolly-zoom, the sword arts' cut disc and the sky split, far-field slices and the Horizon Cut's aim, vibration merging, kill cams, returned warheads clearing the ground) |
 
