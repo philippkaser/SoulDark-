@@ -12,7 +12,7 @@ Everything is generated procedurally at runtime: the models, animations, texture
 
 ```bash
 bun install
-bun run dev        # http://localhost:5173
+bun run dev        # http://localhost (port 80)
 ```
 
 Click **Begin the apocalypse** for the campaign, or **Sandbox** to summon anything on demand.
